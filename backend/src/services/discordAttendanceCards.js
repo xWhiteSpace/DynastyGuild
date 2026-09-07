@@ -16,6 +16,7 @@ import {
   getDefaultLeaveCredits,
 } from './attendanceDecision.js';
 import { enqueueDiscordCall, isDiscordCircuitOpen } from '../utils/discordRateLimit.js';
+import { jobIconEmoji, withJobIcon } from './discordJobEmojis.js';
 
 const EMBED_COLOR = '#9333ea';
 const ANNOUNCE_COOLDOWN_MS = 60 * 1000;
@@ -53,21 +54,9 @@ function formatEventWhen(dateStr, timeStart) {
   return Number.isFinite(year) ? `${mon} ${dd}, ${year}  ${time}` : `${dateStr}  ${time}`;
 }
 
-function formatDateMmDd(dateStr) {
-  const parts = String(dateStr || '').split('-');
-  if (parts.length < 3) return dateStr || '—';
-  const month = String(parts[1] || '').padStart(2, '0');
-  const day = String(parts[2] || '').padStart(2, '0');
-  if (!month || !day || month === '00' || day === '00') return dateStr || '—';
-  return `${month}/${day}`;
-}
-
-function buildAvailabilityCopy(dateLabel) {
-  return (
-    `Please confirm your availability for our upcoming GVG This ${dateLabel}. ` +
-    'This will help our officers to build balanced parties. Your Response is greatly appreciated.'
-  );
-}
+const AVAILABILITY_COPY =
+  'Please confirm your availability for our upcoming GVG.\n' +
+  'This will help our officers to build balanced parties. Your Response is greatly appreciated.';
 
 function buildRsvpAnnounceLine({ displayName, action, eventTitle, whenLabel }) {
   const name = displayName || 'A raider';
@@ -132,10 +121,15 @@ function catalogName(catalog, code) {
 function catalogSelectOptions(catalog) {
   return Object.entries(catalog || {})
     .slice(0, DISCORD_SELECT_LIMIT)
-    .map(([code, obj]) => ({
-      label: String(obj?.name || code).slice(0, 100) || code,
-      value: String(code).slice(0, 100),
-    }))
+    .map(([code, obj]) => {
+      const opt = {
+        label: String(obj?.name || code).slice(0, 100) || code,
+        value: String(code).slice(0, 100),
+      };
+      const emoji = jobIconEmoji(obj?.iconFile);
+      if (emoji) opt.emoji = { id: emoji.id };
+      return opt;
+    })
     .filter((opt) => opt.value);
 }
 
@@ -143,17 +137,25 @@ function tallyConfirmedClasses(commitments, members, jobsCatalog) {
   const counts = new Map();
   Object.entries(commitments || {}).forEach(([uid, rec]) => {
     if (rec?.status !== 'Confirmed' && rec?.status !== 'Confirm') return;
-    const jobCode = members?.[uid]?.jobCode;
-    const label = jobCode ? (jobsCatalog?.[jobCode]?.name || jobCode) : 'Unassigned';
-    counts.set(label, (counts.get(label) || 0) + 1);
+    const jobCode = members?.[uid]?.jobCode || '';
+    const key = jobCode || '__unassigned__';
+    const prev = counts.get(key) || { jobCode, count: 0 };
+    prev.count += 1;
+    counts.set(key, prev);
   });
-  const lines = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
-    .map(([name, n]) => `${name} - ${n}`);
-  if (!lines.length) return 'None yet';
+  const rows = [...counts.values()].map((row) => {
+    const job = row.jobCode ? jobsCatalog?.[row.jobCode] : null;
+    const name = row.jobCode ? (job?.name || row.jobCode) : 'Unassigned';
+    return {
+      name,
+      count: row.count,
+      text: withJobIcon(job?.iconFile, `${name} - ${row.count}`),
+    };
+  }).sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)));
+  if (!rows.length) return 'None yet';
   let value = '';
-  for (const line of lines) {
-    const next = value ? `${value}\n${line}` : line;
+  for (const row of rows) {
+    const next = value ? `${value}\n${row.text}` : row.text;
     if (next.length > CONFIRMED_CLASS_FIELD_LIMIT) break;
     value = next;
   }
@@ -218,16 +220,10 @@ function buildRoleChangeView(rolesCatalog) {
 }
 
 export async function sendPublicAttendanceCard(channel) {
-  const { event, missing } = await resolveAttendanceTargetEvent();
   const embed = new EmbedBuilder()
     .setTitle(PANEL_TITLE)
-    .setColor(EMBED_COLOR);
-
-  if (!event) {
-    embed.setDescription(attendanceEmptyDescription(missing));
-  } else {
-    embed.setDescription(buildAvailabilityCopy(formatDateMmDd(event.date)));
-  }
+    .setColor(EMBED_COLOR)
+    .setDescription(AVAILABILITY_COPY);
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -313,9 +309,9 @@ async function buildPersonalPanel(snowflakeId) {
   );
 
   embed.setDescription(
-    `${buildAvailabilityCopy(formatDateMmDd(event.date))}\n\n` +
+    `${AVAILABILITY_COPY}\n\n` +
       `Response Deadline: **${formatDeadline(deadlineMs, timezone)}**\n` +
-      `Your Current Role: **${jobName}** ${roleName}`
+      `Your Current Role: ${withJobIcon(jobsCatalog[member.jobCode]?.iconFile, `**${jobName}** ${roleName}`)}`
   );
   embed.addFields({ name: 'Confirmed Class', value: classSummary });
 

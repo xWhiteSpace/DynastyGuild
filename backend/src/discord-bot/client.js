@@ -4,6 +4,7 @@ import { handleAuctionInteraction } from '../services/discordInteractiveAuction.
 import admin from 'firebase-admin'; // 🛰️ Connect absolute database reference paths
 import { handleSlashCommand, handleComponentInteraction } from './discordSlashcmd.js';
 import { handleAttendanceCardInteraction } from '../services/discordAttendanceCards.js';
+import { syncJobIconEmojis } from '../services/discordJobEmojis.js';
 import { handlePartyCardInteraction } from '../services/partyViewer.js';
 
 import { Agent, ProxyAgent, setGlobalDispatcher } from 'undici';
@@ -147,6 +148,9 @@ export async function initializeDiscordBot() {
     if (gatewayReadyBound) return;
     gatewayReadyBound = true;
     console.log(`🚀 Discord bot successfully deployed as: ${discordClient.user?.tag}`);
+    syncJobIconEmojis(discordClient).catch((err) => {
+      console.warn('[JOB ICONS] Sync skipped:', err.message);
+    });
 
    // 🕹️ LIVE INTERACTION ROUTER: Gated exclusively to general room for slash commands and interactive boards[cite: 1]
     discordClient.on('interactionCreate', async (interaction) => {
