@@ -157,7 +157,7 @@ export async function initializeDiscordBot() {
           // ACK within Discord's 3s window before any Firebase / panel work.
           if (interaction.customId === 'attcard:open') {
             await interaction.deferReply({ ephemeral: true });
-          } else if (interaction.customId.startsWith('attcard:set:')) {
+          } else {
             await interaction.deferUpdate();
           }
           return await handleAttendanceCardInteraction(interaction);
