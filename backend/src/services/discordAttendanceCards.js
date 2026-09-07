@@ -220,6 +220,7 @@ function buildRoleChangeView(rolesCatalog) {
 }
 
 export async function sendPublicAttendanceCard(channel) {
+  const { event, missing } = await resolveAttendanceTargetEvent();
   const embed = new EmbedBuilder()
     .setTitle(PANEL_TITLE)
     .setColor(EMBED_COLOR)
