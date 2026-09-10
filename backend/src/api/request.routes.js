@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { getDatabase } from 'firebase-admin/database';
 import { getGateStatusDetails } from '../config/timeWindow.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
+import { asItemsList, buildMemberAuctionStats } from '../utils/memberAuctionStats.js';
 
 import crypto from 'crypto'; // 🛡️ Cryptographic token verification module
 import { isDiscordCircuitOpen, getDiscordRateLimitStatus, logDiscordHttpFailure } from '../utils/discordRateLimit.js';
@@ -101,6 +102,12 @@ function verifyDiscordOfficerRole(user, allowedRoles = []) {
     return user.roles.some(roleName => allowedRoles.includes(roleName));
   }
   return user.isOfficer === true;
+}
+
+function parseMemberUid(raw) {
+  const uid = String(raw ?? '').trim();
+  if (/^\d{5,22}$/.test(uid) || /^dummy_\d+$/.test(uid)) return uid;
+  return null;
 }
 
 /**
@@ -1242,6 +1249,50 @@ router.get('/request-history', async (req, res) => {
     }));
 
     return res.json({ success: true, history: historyArray.reverse() });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/requests/member-auction-stats?uid=
+ * Self or officer. Guild-wide loot_history battle count + this member's Selected qty.
+ */
+router.get('/member-auction-stats', async (req, res) => {
+  const user = resolveUserIdentity(req);
+  if (!user) return res.status(401).json({ success: false, error: 'Session identity missing' });
+
+  try {
+    const db = getDatabase();
+    const configSnap = await db.ref('settings/configuration').once('value');
+    const dynamicConfig = configSnap.exists() ? configSnap.val() : {};
+    const allowedRoles = dynamicConfig.adminRoles || ['GUILD LEADER', 'Vice Guild Leader', 'Commander'];
+
+    const uid = parseMemberUid(req.query.uid || user.id);
+    if (!uid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid member id. Expected a Discord snowflake.',
+        received: req.query.uid || user.id || null,
+      });
+    }
+
+    if (uid !== String(user.id) && !verifyDiscordOfficerRole(user, allowedRoles)) {
+      return res.status(403).json({ success: false, error: 'Access Denied.' });
+    }
+
+    const [lootSnap, requestsSnap] = await Promise.all([
+      db.ref('auction/loot_history').once('value'),
+      db.ref('auction/web_requests').orderByChild('userId').equalTo(uid).once('value'),
+    ]);
+
+    const stats = buildMemberAuctionStats({
+      lootHistory: lootSnap.exists() ? lootSnap.val() : {},
+      memberRequests: requestsSnap.exists() ? requestsSnap.val() : {},
+      itemsList: asItemsList(dynamicConfig.items),
+    });
+
+    return res.json({ success: true, ...stats });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
