@@ -5,6 +5,31 @@ import { Minus, Plus, User } from 'lucide-react';
 import { apiFetch } from '../services/apiClient';
 import MemberTrendSparkline, { buildMemberTrendTimeline } from '../components/MemberTrendSparkline';
 
+const EMPTY_AUCTION_STATS = { recordedBattles: 0, totalItemsAcquired: 0, items: [] };
+
+const ITEM_THEME_MAP = {
+  purple: 'text-violet-400 border-violet-500/30 bg-violet-950/20',
+  yellow: 'text-yellow-400 border-yellow-500/30 bg-yellow-950/10',
+  slate: 'text-slate-100 border-slate-700 bg-slate-900/40',
+  red: 'text-red-500 border-red-950 bg-black/60',
+};
+
+function itemTileTheme(colorTheme) {
+  if (typeof colorTheme === 'string' && colorTheme.startsWith('#')) {
+    return {
+      className: 'border',
+      style: {
+        color: colorTheme,
+        borderColor: `${colorTheme}40`,
+        backgroundColor: `${colorTheme}15`,
+        boxShadow: `0 0 15px ${colorTheme}20`,
+      },
+    };
+  }
+  const preset = ITEM_THEME_MAP[colorTheme] || 'text-slate-300 border-slate-800 bg-slate-950/40';
+  return { className: `border ${preset}`, style: {} };
+}
+
 export default function Profile({ user }) {
   const { uid: routeUid } = useParams();
   const navigate = useNavigate();
@@ -18,6 +43,7 @@ export default function Profile({ user }) {
   const [sessions, setSessions] = useState({});
   const [error, setError] = useState('');
   const [adjusting, setAdjusting] = useState(false);
+  const [auctionStats, setAuctionStats] = useState(EMPTY_AUCTION_STATS);
 
   const canView = !!targetUid && (String(targetUid) === String(user?.id) || isOfficer);
 
@@ -29,6 +55,7 @@ export default function Profile({ user }) {
     try {
       setLoading(true);
       setError('');
+      setAuctionStats(EMPTY_AUCTION_STATS);
       const isSelf = !routeUid || String(routeUid) === String(user?.id);
       const profilePath = isSelf
         ? '/api/attendance/profile'
@@ -45,11 +72,25 @@ export default function Profile({ user }) {
       setRolesCatalog(data.config?.roles || {});
 
       try {
-        const histRes = await apiFetch('/api/live-raid/history/all', { method: 'GET' });
+        const [histRes, statsRes] = await Promise.all([
+          apiFetch('/api/live-raid/history/all', { method: 'GET' }),
+          apiFetch(`/api/requests/member-auction-stats?uid=${encodeURIComponent(String(targetUid))}`),
+        ]);
         const histData = await histRes.json();
         if (histData.success) setSessions(histData.sessions || {});
+        const statsData = await statsRes.json();
+        if (statsRes.ok && statsData.success) {
+          setAuctionStats({
+            recordedBattles: parseInt(statsData.recordedBattles, 10) || 0,
+            totalItemsAcquired: parseInt(statsData.totalItemsAcquired, 10) || 0,
+            items: Array.isArray(statsData.items) ? statsData.items : [],
+          });
+        } else {
+          setAuctionStats(EMPTY_AUCTION_STATS);
+        }
       } catch (histErr) {
         console.error('Profile history load failed:', histErr);
+        setAuctionStats(EMPTY_AUCTION_STATS);
       }
     } catch (err) {
       setError(err.message || 'Failed to load profile.');
@@ -176,6 +217,46 @@ export default function Profile({ user }) {
       <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5">
         <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500 mb-3">Attendance graph</div>
         <MemberTrendSparkline timeline={timeline} displayName={member.displayName || 'Raider'} />
+      </div>
+
+      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div>
+          <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500">Auction Rewards</div>
+          <p className="text-[10px] text-slate-500 mt-1">Guild loot nights plus this member’s Selected bids.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-2">
+            <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500">Recorded Battles</div>
+            <span className="text-3xl font-black tabular-nums text-slate-100">{auctionStats.recordedBattles}</span>
+            <p className="text-[10px] text-slate-500">Unique nights in View Loot History.</p>
+          </div>
+          <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-2">
+            <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500">Items acquired</div>
+            <span className="text-3xl font-black tabular-nums text-slate-100">{auctionStats.totalItemsAcquired}</span>
+            <p className="text-[10px] text-slate-500">Pieces won with Bid Status Selected.</p>
+          </div>
+        </div>
+
+        {auctionStats.items.length === 0 ? (
+          <p className="text-[10px] text-slate-500 font-mono italic">No auction catalog or Selected wins recorded yet.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {auctionStats.items.map((item) => {
+              const theme = itemTileTheme(item.colorTheme);
+              return (
+                <div
+                  key={item.itemId}
+                  className={`rounded-2xl p-4 space-y-2 ${theme.className}`}
+                  style={theme.style}
+                >
+                  <div className="text-[10px] font-sans font-semibold truncate">{item.name || item.itemId}</div>
+                  <span className="text-3xl font-black tabular-nums text-slate-100">{item.quantity || 0}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {routeUid && String(routeUid) !== String(user?.id) && (
