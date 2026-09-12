@@ -56,10 +56,10 @@ export default function UserPanel({ user, onLogout, onSessionUser }) {
         }
       })
       .catch(() => {});
-    apiFetch('/api/requests/settings/get', { method: 'GET' })
+    apiFetch('/api/requests/settings/help', { method: 'GET' })
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && data.config?.timezone) setGuildTz(data.config.timezone);
+        if (data.success && data.timezone) setGuildTz(data.timezone);
       })
       .catch(() => {});
     return undefined;

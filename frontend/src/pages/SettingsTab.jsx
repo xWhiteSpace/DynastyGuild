@@ -108,6 +108,7 @@ export default function SettingsTab() {
 
   // State handles for inputting new items, roles, and events
   const [newRoleStr, setNewRoleStr] = useState('');
+  const [discordRoles, setDiscordRoles] = useState([]);
   const [newEventName, setNewEventName] = useState('');
   
   // 🗺️ NAVIGATION STRIP STATE
@@ -117,13 +118,29 @@ export default function SettingsTab() {
   // Floating absolute alarm popover target per phase timeline row
   const [activeAlarmPopoverId, setActiveAlarmPopoverId] = useState(null);
 
-  const loadGlobalConfigurationTree = async () => {
+  const loadGlobalConfigurationTree = async (retried = false) => {
     try {
       const res = await apiFetch('/api/requests/settings/get', { method: 'GET' });
       const data = await res.json();
       if (data.success) {
         if (data.publicOnly) {
+          if (retried) {
+            setIsLocked(true);
+            return;
+          }
+          const unlockRes = await apiFetch('/api/requests/settings/unlock', {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+          const unlockData = await unlockRes.json().catch(() => ({}));
+          if (unlockData.success) {
+            if (unlockData.user) {
+              localStorage.setItem('guild_raid_session', JSON.stringify(unlockData.user));
+            }
+            return loadGlobalConfigurationTree(true);
+          }
           setIsLocked(true);
+          if (unlockData.error) setErrorMsg(unlockData.error);
           return;
         }
         setConfig({
@@ -131,6 +148,7 @@ export default function SettingsTab() {
           guildDisplayName: data.config.guildDisplayName || '',
           helpEmbedUrl: data.config.helpEmbedUrl || '',
           raidHelpEmbedUrl: data.config.raidHelpEmbedUrl || '',
+          adminRoles: Array.isArray(data.config.adminRoles) ? data.config.adminRoles : [],
           roles: data.config.roles || {},
           liveRaidMaxConfigs: data.config.liveRaidMaxConfigs ?? 5,
           liveRaidMaxWarRooms: data.config.liveRaidMaxWarRooms ?? 2,
@@ -149,12 +167,15 @@ export default function SettingsTab() {
             },
           });
         }
+        setIsLocked(false);
         const unlockRes = await apiFetch('/api/requests/settings/unlock', {
           method: 'POST',
           body: JSON.stringify({}),
         });
         const unlockData = await unlockRes.json().catch(() => ({}));
-        setIsLocked(!unlockData.success);
+        if (unlockData.user) {
+          localStorage.setItem('guild_raid_session', JSON.stringify(unlockData.user));
+        }
       }
     } catch (err) {
       console.error("Error loading settings from server routing layer:", err);
@@ -165,6 +186,24 @@ export default function SettingsTab() {
     loadGlobalConfigurationTree();
   }, []);
 
+  useEffect(() => {
+    if (isLocked) return undefined;
+    let guildId = '';
+    try {
+      guildId = JSON.parse(localStorage.getItem('guild_raid_session') || '{}').currentTenantId || '';
+    } catch {
+      guildId = '';
+    }
+    if (!guildId) return undefined;
+    apiFetch(`/api/tenants/discord-roles?guildId=${encodeURIComponent(guildId)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setDiscordRoles(data.roles || []);
+      })
+      .catch(() => {});
+    return undefined;
+  }, [isLocked]);
+
   const handleVerifyPassphrase = async () => {
     try {
       setErrorMsg('');
@@ -174,6 +213,9 @@ export default function SettingsTab() {
       });
       const data = await res.json();
       if (data.success) {
+        if (data.user) {
+          localStorage.setItem('guild_raid_session', JSON.stringify(data.user));
+        }
         setIsLocked(false);
         setErrorMsg('');
         loadGlobalConfigurationTree();
@@ -280,18 +322,29 @@ export default function SettingsTab() {
     setConfig(prev => ({ ...prev, items: [...prev.items, newItemObj] }));
   };
 
-  const handleAddRoleNode = () => {
-    if (!newRoleStr.trim()) return;
-    if (config.adminRoles.includes(newRoleStr.trim())) {
-      alert('Role string signature already declared.');
-      return;
-    }
-    setConfig(prev => ({ ...prev, adminRoles: [...prev.adminRoles, newRoleStr.trim()] }));
+  const handleAddRoleNode = (roleName) => {
+    const name = String(roleName || newRoleStr || '').trim();
+    if (!name) return;
+    const current = Array.isArray(config.adminRoles) ? config.adminRoles : [];
+    if (current.some((role) => role.toLowerCase() === name.toLowerCase())) return;
+    setConfig((prev) => ({ ...prev, adminRoles: [...(prev.adminRoles || []), name] }));
     setNewRoleStr('');
   };
 
   const handleRemoveRoleNode = (roleName) => {
-    setConfig(prev => ({ ...prev, adminRoles: prev.adminRoles.filter(r => r !== roleName) }));
+    setConfig((prev) => ({
+      ...prev,
+      adminRoles: (prev.adminRoles || []).filter((role) => role.toLowerCase() !== String(roleName).toLowerCase()),
+    }));
+  };
+
+  const toggleOfficerRole = (name) => {
+    const current = Array.isArray(config.adminRoles) ? config.adminRoles : [];
+    if (current.some((role) => role.toLowerCase() === name.toLowerCase())) {
+      handleRemoveRoleNode(name);
+      return;
+    }
+    handleAddRoleNode(name);
   };
 
   const handleAddEventNode = () => {
@@ -1013,12 +1066,12 @@ export default function SettingsTab() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3.5">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider"><IconShield /> Discord Role List</div>
-              <p className="text-[10px] text-slate-500 mt-0.5">Discord server role strings that unlock configuration panels.</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Pick Discord roles that should unlock Settings. Names are matched case-insensitively.</p>
             </div>
             <div className="flex gap-2">
               <input 
                 type="text"
-                placeholder="Type Discord Role (Case-Sensitive) ..."
+                placeholder="Or type a role name…"
                 value={newRoleStr}
                 onChange={(e) => setNewRoleStr(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 outline-none font-sans min-w-[270px]"
@@ -1026,13 +1079,35 @@ export default function SettingsTab() {
               />
               <button 
                 type="button"
-                onClick={handleAddRoleNode}
+                onClick={() => handleAddRoleNode()}
                 className="flex items-center gap-1 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-[10px] font-semibold uppercase tracking-wider rounded-xl transition cursor-pointer text-white"
               >
                 <IconPlus /> Authorize
               </button>
             </div>
           </div>
+
+          {discordRoles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {discordRoles.map((role) => {
+                const selected = (config.adminRoles || []).some((name) => name.toLowerCase() === role.name.toLowerCase());
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => toggleOfficerRole(role.name)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] border ${
+                      selected
+                        ? 'border-indigo-500 bg-indigo-600 text-white'
+                        : 'border-slate-800 bg-slate-950 text-slate-300'
+                    }`}
+                  >
+                    {role.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {config.adminRoles && config.adminRoles.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
@@ -1050,7 +1125,7 @@ export default function SettingsTab() {
               ))}
             </div>
           ) : (
-            <div className="text-xs text-slate-500 font-mono py-6 text-center border border-dashed border-slate-800 rounded-xl italic">No explicit bypass vectors mapped. Falling back to platform definitions.</div>
+            <div className="text-xs text-slate-500 font-mono py-6 text-center border border-dashed border-slate-800 rounded-xl">No officer Discord roles yet. Pick from this server’s roles above so those people can unlock Settings.</div>
           )}
 
           <div className="border-t border-slate-800/60 my-6" />

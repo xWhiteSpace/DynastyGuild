@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { canManageGuild, resolveUserIdentity, signUserProfile } from '../auth/identity.js';
-import { createTenant, getTenant, getTenantsByIds, getTenantsForMember, markTenantOnboarded, loadTenantSettings } from '../db/tenants.js';
+import { rolesGrantOfficer } from '../auth/officer.js';
+import { claimTenantOwner, createTenant, getTenant, getTenantsByIds, getTenantsForMember, markTenantOnboarded, loadTenantSettings } from '../db/tenants.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
 import { botInviteUrl, clearGuildCommands } from '../discord-bot/deployGuild.js';
 import { discordClient } from '../discord-bot/client.js';
@@ -19,16 +20,45 @@ async function buildSessionUser(req, tenantId, baseUser) {
   if (!tenant) throw new Error('Unknown tenant');
   const { configuration } = await loadTenantSettings(tenantId);
   const guild = discordClient?.isReady() ? discordClient.guilds.cache.get(String(tenantId)) : null;
-  const member = guild?.members?.cache.get(baseUser.id) || null;
-  let roles = Array.isArray(baseUser.roles) ? baseUser.roles : [];
+  let member = guild?.members?.cache.get(String(baseUser.id)) || null;
+  if (guild && !member) {
+    member = await guild.members.fetch(String(baseUser.id)).catch(() => null);
+  }
+
+  const fallbackRoles = Array.isArray(baseUser.roles) ? baseUser.roles : [];
+  const mappedNames = mapRoleIdsToNames(guild, fallbackRoles);
+  const liveNames = member
+    ? [...member.roles.cache.values()]
+      .filter((role) => role && role.name !== '@everyone')
+      .map((role) => role.name)
+    : mappedNames;
+  const liveIds = member
+    ? [...member.roles.cache.values()]
+      .filter((role) => role && role.name !== '@everyone')
+      .map((role) => String(role.id))
+    : fallbackRoles.map(String);
+  const matchTokens = [...new Set([...liveNames, ...liveIds, ...fallbackRoles.map(String)])];
+  const roleNames = liveNames.length ? liveNames : mappedNames;
+
   let displayName = baseUser.displayName || baseUser.username;
   if (member) {
     displayName = (member.nickname || member.displayName || displayName).replace(/\//g, '_');
-    roles = member.roles.cache.map((role) => role.name);
   }
+
+  const listed = (req.session?.discordGuilds || []).find((g) => String(g.id) === String(tenantId));
+  const isDiscordOwner = String(guild?.ownerId || '') === String(baseUser.id) || Boolean(listed?.owner);
+  const canManage = (member ? canManageGuild(member.permissions?.bitfield) : false)
+    || (listed ? canManageGuild(listed.permissions) : false);
+
+  let ownerDiscordId = tenant.owner_discord_id || null;
+  if (!ownerDiscordId && (isDiscordOwner || canManage)) {
+    await claimTenantOwner(tenantId, baseUser.id);
+    ownerDiscordId = String(baseUser.id);
+  }
+
   const adminRoles = Array.isArray(configuration.adminRoles) ? configuration.adminRoles : [];
-  const isOfficer = tenant.owner_discord_id === baseUser.id
-    || roles.some((name) => adminRoles.includes(name));
+  const isOfficer = String(ownerDiscordId || '') === String(baseUser.id)
+    || rolesGrantOfficer(matchTokens, adminRoles);
 
   const user = {
     id: baseUser.id,
@@ -37,7 +67,7 @@ async function buildSessionUser(req, tenantId, baseUser) {
     avatar: baseUser.avatar,
     displayName,
     isOfficer,
-    roles,
+    roles: roleNames,
     currentTenantId: String(tenantId),
     tenantName: tenant.display_name || configuration.guildDisplayName || 'Guild',
     tenantOnboarded: Boolean(tenant.onboarded),
@@ -48,7 +78,7 @@ async function buildSessionUser(req, tenantId, baseUser) {
     const db = getDatabase();
     await db.ref(`auction/members/${user.id}`).update({
       displayName: user.displayName,
-      ...(roles.length ? { roles } : {}),
+      ...(roleNames.length ? { roles: roleNames } : {}),
       syncedAt: new Date().toLocaleDateString('en-US', { timeZone: configuration.timezone || 'Asia/Manila' }),
     });
   });

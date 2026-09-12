@@ -4,8 +4,9 @@ import { getDatabase } from '../db/database.js';
 import { getGateStatusDetails } from '../config/timeWindow.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
 import { getCurrentTenantId } from '../db/tenantContext.js';
-import { checkOfficer, configNeedsSetup, isTenantOfficer, publicSettingsView } from '../auth/officer.js';
+import { checkOfficer, configNeedsSetup, publicSettingsView, helpSettingsView } from '../auth/officer.js';
 import { loadTenantSettings, saveTenantDiscordChannels } from '../db/tenants.js';
+import { signUserProfile } from '../auth/identity.js';
 
 import crypto from 'crypto'; // 🛡️ Cryptographic token verification module
 import { isDiscordCircuitOpen, getDiscordRateLimitStatus, logDiscordHttpFailure } from '../utils/discordRateLimit.js';
@@ -98,8 +99,9 @@ function resolveUserIdentity(req) {
  * 🛡️ DYNAMIC ROLE INTERSECTOR
  * Compares the active Discord user profile arrays directly against authorized configurations
  */
-function verifyDiscordOfficerRole(user, allowedRoles = []) {
-  return isTenantOfficer(user, { adminRoles: allowedRoles }) || user?.isOfficer === true;
+async function verifyDiscordOfficerRole(req, allowedRoles = []) {
+  const { user, ok } = await checkOfficer(req, { adminRoles: allowedRoles });
+  return Boolean(user && ok);
 }
 
 /**
@@ -211,11 +213,29 @@ router.post('/settings/unlock', async (req, res) => {
       });
     }
     const tenantId = req.tenantId || getCurrentTenantId();
+    const signedUser = user ? signUserProfile(user) : null;
+    const payload = { success: true, message: 'Officer configuration desk unlocked.', user: signedUser };
     if (req.session) {
       req.session.settingsUnlocked = true;
       req.session.settingsUnlockedTenantId = tenantId;
+      return req.session.save(() => res.json(payload));
     }
-    return res.json({ success: true, message: 'Officer configuration desk unlocked.' });
+    return res.json({ success: true, message: 'Officer configuration desk unlocked.', user: signedUser });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/requests/settings/help
+ * Member-safe Help URLs + clock timezone. Does not include adminRoles or channels.
+ */
+router.get('/settings/help', async (req, res) => {
+  try {
+    const db = getDatabase();
+    const configSnap = await db.ref('settings/configuration').once('value');
+    const config = configSnap.exists() ? configSnap.val() : { ...DEFAULT_CONFIGURATION };
+    return res.json({ success: true, ...helpSettingsView(config) });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -239,6 +259,7 @@ router.get('/settings/get', async (req, res) => {
       return res.json({
         success: true,
         config: publicSettingsView(config),
+        help: helpSettingsView(config),
         needsSetup,
         publicOnly: true,
       });
@@ -257,13 +278,15 @@ router.post('/settings/save', async (req, res) => {
     const { config } = req.body;
     if (!config) return res.status(400).json({ success: false, error: 'Omitted payload configuration parameter maps.' });
 
-    const { user, ok } = await checkOfficer(req, config);
+    const db = getDatabase();
+    const storedSnap = await db.ref('settings/configuration').once('value');
+    const storedConfig = storedSnap.exists() ? storedSnap.val() : {};
+    const { user, ok } = await checkOfficer(req, storedConfig);
     if (!user) return res.status(401).json({ success: false, error: 'Login required' });
     if (!ok) {
       return res.status(403).json({ success: false, error: 'Officer access required to save Settings.' });
     }
 
-    const db = getDatabase();
     await db.ref('settings/configuration').set(config);
     if (req.body.discordChannels) {
       const tenantId = req.tenantId || getCurrentTenantId();
@@ -355,7 +378,7 @@ router.post('/update-session', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       console.error(`🛑 [SECURITY OVERRIDE REJECTION]: User "${user.displayName || user.username}" lacks authorized management roles. Write blocked.`);
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to authorized Discord Management Officers only.' });
     }
@@ -1040,7 +1063,7 @@ router.post('/commit-session', async (req, res) => {
   const dynamicConfig = configSnap.exists() ? configSnap.val() : {};
   const allowedRoles = dynamicConfig.adminRoles || [];
 
-  if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+  if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
     return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to authorized Discord Management Officers only.' });
   }
 
@@ -1074,7 +1097,7 @@ router.post('/reset-priority', async (req, res) => {
   const timezone = dynamicConfig.timezone || "Asia/Manila";
   const itemsList = dynamicConfig.items || [];
 
-  if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+  if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
     return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to authorized Discord Management Officers only.' });
   }
 
@@ -1124,7 +1147,7 @@ router.post('/clear-history', async (req, res) => {
   const dynamicConfig = configSnap.exists() ? configSnap.val() : {};
   const allowedRoles = dynamicConfig.adminRoles || [];
 
-  if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+  if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
     return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to authorized Discord Management Officers only.' });
   }
 

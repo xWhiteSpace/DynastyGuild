@@ -84,6 +84,17 @@ export async function createTenant({
   return getTenant(tenantId);
 }
 
+export async function claimTenantOwner(tenantId, discordUserId) {
+  if (!tenantId || !discordUserId) return null;
+  await query(
+    `UPDATE tenants
+     SET owner_discord_id = $2
+     WHERE id = $1 AND (owner_discord_id IS NULL OR owner_discord_id = '')`,
+    [String(tenantId), String(discordUserId)]
+  );
+  return getTenant(tenantId);
+}
+
 export async function markTenantOnboarded(id, { displayName, discordChannels, configuration } = {}) {
   const tenantId = String(id);
   if (displayName) {

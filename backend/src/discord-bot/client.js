@@ -173,7 +173,7 @@ async function withGuildTenant(guildId, fn) {
   return runWithTenant(guildId, fn);
 }
 
-   // 🕹️ LIVE INTERACTION ROUTER: Gated exclusively to general room for slash commands and interactive boards[cite: 1]
+   // Card interactions (auction, attendance, party) plus a notice if an old slash command is invoked
     discordClient.on('interactionCreate', async (interaction) => {
       await withGuildTenant(interaction.guildId, async () => {
       try {
@@ -214,13 +214,6 @@ async function withGuildTenant(guildId, fn) {
           return await interaction.reply({
             content: 'Slash commands were removed. Use the auction, attendance, or party cards in your mapped Discord channels.',
             ephemeral: true,
-          }).catch(() => {});
-        }
-
-        if (interaction.channelId !== discordChannel('DISCORD_GENROOM_ID_1')) {
-          return await interaction.reply({
-            content: '❌ System commands are strictly locked to the designated general room channel.',
-            ephemeral: true
           }).catch(() => {});
         }
       } catch (err) {

@@ -43,11 +43,11 @@ export default function LeftNavBar({ macroTab }) {
   useEffect(() => {
     const fetchHelpUrl = async () => {
       try {
-        const res = await apiFetch('/api/requests/settings/get', { method: 'GET' });
+        const res = await apiFetch('/api/requests/settings/help', { method: 'GET' });
         const data = await res.json();
-        if (data.success && data.config) {
-          setAuctionHelpUrl(data.config.helpEmbedUrl || '');
-          setRaidHelpUrl(data.config.raidHelpEmbedUrl || '');
+        if (data.success) {
+          setAuctionHelpUrl(data.helpEmbedUrl || '');
+          setRaidHelpUrl(data.raidHelpEmbedUrl || '');
         }
       } catch (err) {
         console.error("Error fetching help URL:", err);

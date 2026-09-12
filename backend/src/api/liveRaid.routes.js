@@ -13,7 +13,7 @@ import {
   findCrossTabDuplicates,
   isSlotCoordKey,
 } from '@guildname/shared/compositionTabs';
-import { isTenantOfficer } from '../auth/officer.js';
+import { checkOfficer } from '../auth/officer.js';
 
 const router = Router();
 
@@ -48,8 +48,9 @@ function resolveUserIdentity(req) {
   return null;
 }
 
-function verifyDiscordOfficerRole(user, allowedRoles = []) {
-  return isTenantOfficer(user, { adminRoles: allowedRoles }) || user?.isOfficer === true;
+async function verifyDiscordOfficerRole(req, allowedRoles = []) {
+  const { user, ok } = await checkOfficer(req, { adminRoles: allowedRoles });
+  return Boolean(user && ok);
 }
 
 // Timezone End Timestamp Parser
@@ -569,7 +570,7 @@ router.post('/create', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -686,7 +687,7 @@ router.post('/update', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -723,7 +724,7 @@ router.post('/cell-update', async (req, res) => {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Officer access required' });
     }
     const { configId, coordKey, userId } = req.body;
@@ -802,7 +803,7 @@ router.post('/end', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -829,7 +830,7 @@ router.post('/cancel', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -846,9 +847,9 @@ router.post('/cancel', async (req, res) => {
 });
 
 router.delete('/history/:sessionId', async (req, res) => {
-  const user = resolveUserIdentity(req);
+  const { user, ok } = await checkOfficer(req);
   if (!user) return res.status(401).json({ success: false, error: 'Authentication missing' });
-  if (!user.isOfficer) return res.status(403).json({ success: false, error: 'Officer access required' });
+  if (!ok) return res.status(403).json({ success: false, error: 'Officer access required' });
 
   const { sessionId } = req.params;
   if (!sessionId) return res.status(400).json({ success: false, error: 'sessionId is required' });
@@ -868,9 +869,9 @@ router.delete('/history/:sessionId', async (req, res) => {
  * Writes attendance/session_archive/{sessionId}/inGameStatus/{userId} = true | null
  */
 router.patch('/history/:sessionId/in-game', async (req, res) => {
-  const user = resolveUserIdentity(req);
+  const { user, ok } = await checkOfficer(req);
   if (!user) return res.status(401).json({ success: false, error: 'Authentication missing' });
-  if (!user.isOfficer) return res.status(403).json({ success: false, error: 'Officer access required' });
+  if (!ok) return res.status(403).json({ success: false, error: 'Officer access required' });
 
   const { sessionId } = req.params;
   const { userId, confirmed } = req.body || {};
@@ -920,7 +921,7 @@ router.post('/set-monitoring-time', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+    if (!await verifyDiscordOfficerRole(req, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Officer access required' });
     }
 

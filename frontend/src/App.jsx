@@ -179,10 +179,10 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch('/api/requests/settings/get', { method: 'GET' });
+        const res = await apiFetch('/api/requests/settings/help', { method: 'GET' });
         const data = await res.json();
         if (cancelled) return;
-        const name = (data?.config?.guildDisplayName || '').trim();
+        const name = (data?.guildDisplayName || '').trim();
         document.title = `${name || 'Guild'} Guild App`;
       } catch {
         if (!cancelled) document.title = 'Guild App';

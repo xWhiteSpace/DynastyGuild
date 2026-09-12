@@ -19,7 +19,7 @@ import {
 } from '@guildname/shared/compositionTabs';
 import { getCurrentTenantId } from '../db/tenantContext.js';
 import { discordChannel } from '../db/channels.js';
-import { isTenantOfficer } from '../auth/officer.js';
+import { checkOfficer } from '../auth/officer.js';
 
 const router = Router();
 
@@ -53,12 +53,10 @@ function resolveUserIdentity(req) {
   return null;
 }
 
-function verifyOfficerPrivileges(user, allowedRoles = []) {
-  return isTenantOfficer(user, { adminRoles: allowedRoles }) || user?.isOfficer === true;
+async function verifyDiscordOfficerRole(req, allowedRoles = []) {
+  const { user, ok } = await checkOfficer(req, { adminRoles: allowedRoles });
+  return Boolean(user && ok);
 }
-
-// Alias the name so it safely matches your existing dashboard checks across systems
-const verifyDiscordOfficerRole = verifyOfficerPrivileges;
 
 // 🚪 POST /api/attendance/vanish -> Bot-Driven Server Eviction Gate
 router.post('/vanish', async (req, res) => {
@@ -70,7 +68,7 @@ router.post('/vanish', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -122,7 +120,7 @@ router.post('/update-roster-status', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -160,7 +158,7 @@ router.post('/begin-raid', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Action restricted to authorized Officers.' });
     }
 
@@ -237,7 +235,7 @@ router.post('/end-raid', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -300,7 +298,7 @@ router.post('/update-job-target', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -325,7 +323,7 @@ router.post('/update-expected-rate', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -350,7 +348,7 @@ router.get('/deploy-card', async (req, res) => {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { deployPublicAttendanceCardToWarAnnounce } = await import('../services/discordAttendanceCards.js');
@@ -374,7 +372,7 @@ router.get('/deploy-party-card', async (req, res) => {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { deployPublicPartyCardToWarAnnounce } = await import('../services/partyViewer.js');
@@ -400,7 +398,7 @@ router.post('/announce-week', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -542,7 +540,7 @@ router.post('/special-events/add', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { title, description, date, dateEnd, timeStart, timeEnd, type, isAttendanceTracked, daysOfWeek, allDay } = req.body;
@@ -583,7 +581,7 @@ router.delete('/special-events/:id', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { id } = req.params;
@@ -622,7 +620,7 @@ router.put('/special-events/:id', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { id } = req.params;
@@ -691,7 +689,7 @@ router.post('/compositions/create', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -741,7 +739,7 @@ router.post('/compositions/save', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -822,7 +820,7 @@ router.post('/compositions/duplicate', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -891,7 +889,7 @@ router.delete('/compositions/delete/:id', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
 
@@ -915,7 +913,7 @@ router.post('/roster/save-batch', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -973,7 +971,7 @@ router.post('/dummy/create', async (req, res) => {
     const configSnap = await db.ref('settings/configuration').once('value');
     const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
-    if (!verifyDiscordOfficerRole(user, roles)) {
+    if (!await verifyDiscordOfficerRole(req, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -1014,9 +1012,10 @@ router.post('/dummy/create', async (req, res) => {
   }
 });
 
-function requireOfficer(user, configSnap) {
-  const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
-  return verifyDiscordOfficerRole(user, roles);
+async function requireOfficer(req, configSnap) {
+  const config = configSnap?.exists?.() ? configSnap.val() : {};
+  const { user, ok } = await checkOfficer(req, config);
+  return Boolean(user && ok);
 }
 
 function parseMemberUid(raw) {
@@ -1066,7 +1065,7 @@ router.get('/profile', async (req, res) => {
         received: req.query.uid || user.id || null,
       });
     }
-    const isOfficer = requireOfficer(user, configSnap);
+    const isOfficer = await requireOfficer(req, configSnap);
     if (uid !== String(user.id) && !isOfficer) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
@@ -1116,7 +1115,7 @@ router.get('/members/:uid/profile', async (req, res) => {
         received: req.params.uid || null,
       });
     }
-    const isOfficer = requireOfficer(user, configSnap);
+    const isOfficer = await requireOfficer(req, configSnap);
     if (uid !== String(user.id) && !isOfficer) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
     }
@@ -1135,7 +1134,7 @@ router.post('/members/:uid/leave-credits', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const uid = req.params.uid;
@@ -1181,7 +1180,7 @@ router.post('/compose/create', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -1226,7 +1225,7 @@ router.post('/compose/save', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { sessionId, grids } = req.body || {};
@@ -1251,7 +1250,7 @@ router.post('/compose/close', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     await db.ref('attendance/compose_active').remove();
@@ -1291,7 +1290,7 @@ router.post('/compose/send', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
@@ -1337,7 +1336,7 @@ router.post('/compose/deploy-roster', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const { sessionId, grids } = req.body || {};
@@ -1390,7 +1389,7 @@ router.post('/published/:id/set-active', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');
@@ -1416,7 +1415,7 @@ router.delete('/published/:id', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');
@@ -1442,7 +1441,7 @@ router.post('/published/:id/announce-attendance', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');
@@ -1478,7 +1477,7 @@ router.post('/published/:id/announce-party', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');
@@ -1513,7 +1512,7 @@ router.post('/published/:id/add-config', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');
@@ -1549,7 +1548,7 @@ router.post('/published/:id/remove-config', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');
@@ -1576,7 +1575,7 @@ router.post('/published/:id/save-grids', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    if (!requireOfficer(user, configSnap)) {
+    if (!await requireOfficer(req, configSnap)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
     const id = decodeURIComponent(req.params.id || '');

@@ -1,6 +1,6 @@
 # Guild Name
 
-Guild tooling for auction requests, Mimic Book allocation, attendance / raid parties, live raid voice tracking, and Discord slash commands.
+Guild tooling for auction requests, Mimic Book allocation, attendance / raid parties, live raid voice tracking, and Discord cards.
 
 **Requirements / SRS:** [Requirements/Requirements.md](Requirements/Requirements.md)
 
@@ -12,7 +12,7 @@ This README is the **how to install and run** guide. It assumes you have never u
 
 | Piece | Role |
 | :--- | :--- |
-| **Discord** | User login (OAuth) + bot (slash commands, announcements, auction card, voice) |
+| **Discord** | User login (OAuth) + bot (announcements, auction / attendance / party cards, voice) |
 | **Firebase Realtime Database** | Shared data store |
 | **Render** | Hosts the **backend** (API + Discord bot, one Node process) |
 | **Vercel** | Hosts the **frontend** (React site) |
@@ -37,14 +37,14 @@ Browser  →  Vercel (frontend)
 5. Deploy backend on Render
 6. Deploy frontend on Vercel
 7. Wire URLs (OAuth redirect, `FRONTEND_URL`, `VITE_BACKEND_API_URL`)
-8. Register slash commands
+8. Confirm the bot is in the Discord server (slash commands are not used)
 9. First login → unlock Settings → match Discord admin role names
 
 ---
 
 ## Prerequisites
 
-- A computer with [Node.js LTS](https://nodejs.org/) installed (for local run and slash-command deploy)
+- A computer with [Node.js LTS](https://nodejs.org/) installed (for local run)
 - A GitHub account (to connect Render / Vercel to this repo)
 - A Discord account and a Discord **server** you admin
 - Free accounts on [Firebase](https://console.firebase.google.com/), [Render](https://render.com/), and [Vercel](https://vercel.com/)
@@ -107,16 +107,16 @@ The app requests Discord scope **`identify` only** (login). Slash commands use t
 
 ### 1.5 Create channels and copy IDs
 
-In your Discord server, create (or reuse) channels. Right-click → **Copy Channel ID**. Right-click the server name → **Copy Server ID** → `DISCORD_GUILD_ID`.
+In your Discord server, create (or reuse) channels. Map them during onboard / Settings (Developer Mode → Copy Channel ID). `DISCORD_*` channel env vars are for the one-time JSON import CLI only.
 
 | Env variable | What to put |
 | :--- | :--- |
-| `DISCORD_GUILD_ID` | Server ID |
-| `DISCORD_GENROOM_ID_1` | Text channel where slash commands are allowed |
+| `DISCORD_GUILD_ID` | Server ID (import CLI only) |
+| `DISCORD_GENROOM_ID_1` | General text channel (import CLI only; not a slash-command room) |
 | `DISCORD_AUCTION_CHANNEL_ID` | Channel for phase announcements / request snapshots |
 | `DISCORD_AUCREQ_CHANNEL_ID` | Channel for the interactive auction claim card |
 | `DISCORD_ATTENDANCE_ID` | Channel where the weekly attendance thread is created |
-| `DISCORD_WARROOM_ID_1` … `_5` | **Voice** channel IDs used as war rooms (all five are required at boot — reuse the same voice ID if you only need fewer rooms) |
+| `DISCORD_WARROOM_ID_1` … `_5` | **Voice** channel IDs used as war rooms |
 
 ---
 
@@ -204,10 +204,10 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY
 
 You **should** still:
 
-1. Set `SETTINGS_MASTER_KEY` (any strong passphrase you choose)
-2. Unlock Settings in the UI and confirm defaults loaded
-3. Create Discord roles whose **names** match `adminRoles` (defaults: `GUILD LEADER`, `Vice Guild Leader`, `Commander`) — names must match exactly
-4. Fill **Jobs** / **Roles** catalogs in Settings before `/jobchange` and `/rolechange` are useful
+1. Sign in with Discord and pick (or set up) your server
+2. Unlock Settings as the person who set up the guild, or with a Discord role listed under Access Governance
+3. Pick officer Discord roles from the live list in Settings
+4. Fill **Jobs** / **Roles** catalogs in Settings (job/role changes are on the attendance card)
 
 ---
 
@@ -232,8 +232,7 @@ See `backend/.env.example`. Required by `backend/src/config/env.js`:
 **Strongly recommended (not in the fatal list, but needed for real use):**
 
 - `FRONTEND_URL` — exact SPA origin, no trailing slash (`http://localhost:3000` or your Vercel URL)
-- `DISCORD_GUILD_ID`
-- `SETTINGS_MASTER_KEY`
+- `DISCORD_GUILD_ID` — local JSON import CLI only, not a runtime fallback
 
 **Optional:** `ATTENDANCE_POST_HOUR` (default `10`), `PROXY_URL` (if Discord blocks Render IPs), `PORT` (Render sets this).
 
@@ -276,12 +275,7 @@ Vite proxies `/api` and `/auth` to port 5001.
 
 **Cookies note:** Sessions use `secure: true` and `sameSite: 'none'`. On plain `http://localhost`, cookies can be flaky; the app also keeps a signed profile in `localStorage` / `x-user-profile` as a fallback. Prefer testing OAuth against a deployed HTTPS backend when possible.
 
-Register slash commands locally (with the same Discord env vars):
-
-```bash
-cd backend
-npm run deploy-commands
-```
+The Discord bot clears leftover slash-command menus on startup. Job and role changes are on the attendance card.
 
 ---
 
@@ -365,17 +359,12 @@ After both deploys exist:
 1. **Render** → set `FRONTEND_URL=https://your-app.vercel.app` (no trailing slash) → redeploy if needed  
 2. **Discord OAuth2 Redirects** → production `https://YOUR-SERVICE.onrender.com/auth/callback`  
 3. **Vercel** → `VITE_BACKEND_API_URL` points at Render (redeploy so Vite rebuilds with the env)  
-4. From a machine with prod Discord credentials in `backend/.env`:
-
-```bash
-cd backend
-npm run deploy-commands
-```
+4. From a machine with prod Discord credentials in `backend/.env`, the bot clears old slash menus on ready (or run `npm --prefix backend run clear-commands`)
 
 5. Open the Vercel site → **Login with Discord**  
-6. Open **Settings**, unlock with `SETTINGS_MASTER_KEY`, confirm config seeded  
-7. Optional: open `https://YOUR-SERVICE.onrender.com/api/deploy-auction-card` once (while the bot is online) to post the auction card  
-8. In `DISCORD_GENROOM_ID_1`, try `/myparty` or `/jobchange`
+6. Open **Settings** as the guild onboarder (or an officer Discord role) and save channels / events  
+7. Optional: use **Send** in Settings to post the auction / attendance / party cards into that guild’s mapped channels  
+8. Confirm cards work in the mapped Discord channels
 
 ---
 
@@ -384,9 +373,9 @@ npm run deploy-commands
 - [ ] Render `/` returns online text  
 - [ ] Discord bot appears online in the server  
 - [ ] Vercel site loads and Discord login returns you to the app  
-- [ ] Settings unlock works and configuration exists in Firebase  
-- [ ] Discord role names match `adminRoles` for officer tools  
-- [ ] Slash commands appear in the general room  
+- [ ] Settings unlock works for the onboarder / officer Discord roles  
+- [ ] Discord role names in Settings match live server roles for officer tools  
+- [ ] Auction / attendance / party cards post into mapped channels  
 - [ ] War room voice IDs match real voice channels  
 
 ---
@@ -399,7 +388,7 @@ npm run deploy-commands
 | Repo root | `npm run dev` | Frontend + backend together |
 | `frontend` | `npm run build` | Production build |
 | `backend` | `npm start` | Production API + bot |
-| `backend` | `npm run deploy-commands` | Register Discord slash commands |
+| `backend` | `npm run clear-commands` | Clear leftover Discord slash-command menus |
 | `scripts/` | `./scripts/configure-vercel-deploy-hygiene.sh` | Set Vercel retention (needs `VERCEL_TOKEN`) |
 | `scripts/` | `./scripts/cleanup-github-deployments.sh --keep 1` | Delete old GitHub deployment records |
 
@@ -412,9 +401,7 @@ npm run deploy-commands
 | Backend crashes on boot | Missing env from the required list in section 3 |
 | OAuth “redirect_uri mismatch” | Discord Redirects must **exactly** equal `OAUTH_REDIRECT_URI` |
 | Login works but API CORS errors | `FRONTEND_URL` must match the browser origin (scheme + host, no trailing slash) |
-| Slash commands missing | Run `npm run deploy-commands`; commands only work in `DISCORD_GENROOM_ID_1` |
-| `/namechange` fails | Bot role must be **above** the member; needs Manage Nicknames |
-| Settings unlock fails | `SETTINGS_MASTER_KEY` set on Render and typed exactly |
+| Settings unlock fails | You must be the Discord user who set up the guild, or hold a Discord role listed in that guild’s Settings |
 | Firebase permission errors in browser console | Expected with `auth != null` rules; use API-backed UI paths |
 | Bot offline on Render | Service sleeping / crashed; check Render logs; optional `PROXY_URL` |
 
