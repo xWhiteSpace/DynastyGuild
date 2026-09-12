@@ -20,6 +20,7 @@ import {
 import { getCurrentTenantId } from '../db/tenantContext.js';
 import { discordChannel } from '../db/channels.js';
 import { checkOfficer } from '../auth/officer.js';
+import { aggregatePeakHours, normalizePlaySchedule } from '../services/peakHours.js';
 
 const router = Router();
 
@@ -1095,6 +1096,66 @@ router.get('/me', async (req, res) => {
       noConfirmCount: parseInt(member.noConfirmCount, 10) || 0,
       defaultLeaveCredits: defaultCredits,
     });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/attendance/peak-hours
+router.get('/peak-hours', async (req, res) => {
+  const user = resolveUserIdentity(req);
+  if (!user) return res.status(401).json({ success: false, error: 'Session identity missing' });
+  try {
+    const db = getDatabase();
+    const [membersSnap, configSnap] = await Promise.all([
+      db.ref('auction/members').once('value'),
+      db.ref('settings/configuration').once('value'),
+    ]);
+    const members = membersSnap.exists() ? membersSnap.val() : {};
+    const timezone = configSnap.exists() ? (configSnap.val().timezone || 'Asia/Manila') : 'Asia/Manila';
+    const isOfficer = await requireOfficer(req, configSnap);
+    const { heatmap, peak, filled, total, missing } = aggregatePeakHours(members);
+    const mine = normalizePlaySchedule(members[String(user.id)]?.playSchedule);
+    return res.json({
+      success: true,
+      timezone,
+      mine,
+      heatmap,
+      peak,
+      filled,
+      total,
+      missing: isOfficer ? missing : [],
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/attendance/peak-hours/me
+router.put('/peak-hours/me', async (req, res) => {
+  const user = resolveUserIdentity(req);
+  if (!user) return res.status(401).json({ success: false, error: 'Session identity missing' });
+  const uid = parseMemberUid(user.id);
+  if (!uid || String(uid).startsWith('dummy_')) {
+    return res.status(400).json({ success: false, error: 'Sign in with Discord to set Peak Hours.' });
+  }
+  const schedule = normalizePlaySchedule({
+    start: req.body?.start,
+    end: req.body?.end,
+    days: req.body?.days,
+    updatedAt: Date.now(),
+  });
+  if (!schedule) {
+    return res.status(400).json({ success: false, error: 'Pick a From/To window and at least one day.' });
+  }
+  try {
+    const db = getDatabase();
+    const memberSnap = await db.ref(`auction/members/${uid}`).once('value');
+    if (!memberSnap.exists()) {
+      return res.status(404).json({ success: false, error: 'Ask an officer to add you to the roster first.' });
+    }
+    await db.ref(`auction/members/${uid}/playSchedule`).set(schedule);
+    return res.json({ success: true, mine: schedule });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

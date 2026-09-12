@@ -119,7 +119,7 @@ export default function SelectGuildPage({ user, onSessionUser }) {
                   src={guildMarkSrc({ logoUrl: t.logoUrl, guildId: t.id, icon: t.icon })}
                   alt=""
                   onError={onGuildMarkError}
-                  className="h-10 w-10 rounded-lg object-cover bg-slate-900 shrink-0"
+                  className="h-12 w-12 rounded-lg object-cover bg-slate-900 shrink-0"
                 />
                 <div className="min-w-0">
                   <div className="font-semibold truncate">{t.displayName || t.id}</div>
@@ -151,7 +151,7 @@ export default function SelectGuildPage({ user, onSessionUser }) {
                   src={guildMarkSrc({ guildId: g.id, icon: g.icon })}
                   alt=""
                   onError={onGuildMarkError}
-                  className="h-10 w-10 rounded-lg object-cover bg-slate-900 shrink-0"
+                  className="h-12 w-12 rounded-lg object-cover bg-slate-900 shrink-0"
                 />
                 <div className="min-w-0">
                   <div className="font-semibold truncate">{g.name}</div>

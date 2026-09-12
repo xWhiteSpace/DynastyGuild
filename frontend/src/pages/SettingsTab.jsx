@@ -651,7 +651,7 @@ export default function SettingsTab({ user, onSessionUser }) {
                   src={config.guildLogoUrl || user?.tenantLogoUrl || guildMarkSrc({ guildId: user?.currentTenantId })}
                   alt=""
                   onError={onGuildMarkError}
-                  className="h-11 w-11 rounded-xl object-cover bg-slate-950 border border-slate-800 shrink-0"
+                  className="h-16 w-16 rounded-xl object-cover bg-slate-950 border border-slate-800 shrink-0"
                 />
                 <div className="flex flex-col gap-2 flex-1 min-w-0">
                   <input
@@ -781,8 +781,8 @@ export default function SettingsTab({ user, onSessionUser }) {
               ['auctionChannelId', 'Auction announce'],
               ['aucreqChannelId', 'Auction request / claim card'],
               ['genroomId', 'General room'],
-              ['attendanceId', 'Attendance parent'],
-              ['warAnnounceChannelId', 'War announce'],
+              ['attendanceId', 'Weekly attendance thread parent (one text channel)'],
+              ['warAnnounceChannelId', 'War announce (one text channel for cards)'],
             ].map(([key, label]) => (
               <label key={key} className="block text-[10px] font-mono uppercase tracking-wider text-slate-500">
                 {label}

@@ -146,8 +146,8 @@ export default function OnboardGuildPage({ onSessionUser }) {
         {field('Auction announce channel ID', 'auctionChannelId', 'numbers only')}
         {field('Auction request / claim card channel ID', 'aucreqChannelId', '')}
         {field('General room channel ID', 'genroomId', '')}
-        {field('Attendance thread parent channel ID', 'attendanceId', '')}
-        {field('War-announce channel ID', 'warAnnounceChannelId', '')}
+        {field('Weekly attendance thread parent (one text channel)', 'attendanceId', '')}
+        {field('War-announce (one text channel for cards)', 'warAnnounceChannelId', '')}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {Object.keys(emptyRooms).map((key, idx) => (
             <label key={key} className="block text-xs text-slate-400">

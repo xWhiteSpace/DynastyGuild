@@ -19,6 +19,7 @@ import LiveRaidTab from './pages/LiveRaidTab';
 import AttendanceHistoryTab from './pages/AttendanceHistoryTab';
 
 import Scheduler from './pages/Scheduler';
+import PeakHoursTab from './pages/PeakHoursTab';
 import SelectGuildPage from './pages/SelectGuildPage';
 import OnboardGuildPage from './pages/OnboardGuildPage';
 import { apiFetch } from './services/apiClient';
@@ -284,6 +285,7 @@ function AppShell({ authUser, onLogout, onSessionUser, macroTab, setMacroTab }) 
         <Route path="/attendance/masterlist" element={<MasterListTab user={authUser} />} />
         <Route path="/attendance/profile" element={<Profile user={authUser} />} />
         <Route path="/attendance/profile/:uid" element={<Profile user={authUser} />} />
+        <Route path="/attendance/peak-hours" element={<PeakHoursTab user={authUser} />} />
         <Route path="/attendance/raidparty" element={<RaidPartyTab user={authUser} />} />
         <Route path="/attendance/compose" element={<RaidComposeTab user={authUser} />} />
         <Route path="/attendance/liveraid" element={<LiveRaidTab user={authUser} />} />
