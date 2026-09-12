@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { canManageGuild, resolveUserIdentity, signUserProfile } from '../auth/identity.js';
-import { createTenant, getTenant, getTenantsByIds, markTenantOnboarded, loadTenantSettings } from '../db/tenants.js';
+import { createTenant, getTenant, getTenantsByIds, getTenantsForMember, markTenantOnboarded, loadTenantSettings } from '../db/tenants.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
 import { botInviteUrl, deployGuildCommands } from '../discord-bot/deployGuild.js';
 import { discordClient } from '../discord-bot/client.js';
@@ -171,12 +171,26 @@ router.post('/onboard', async (req, res) => {
   });
 });
 
+export async function listVisibleTenants(discordUserId, sessionGuilds = []) {
+  const ids = new Set((sessionGuilds || []).map((g) => String(g.id)).filter(Boolean));
+  const fromRoster = await getTenantsForMember(discordUserId);
+  for (const row of fromRoster) ids.add(String(row.id));
+  if (discordClient?.isReady()) {
+    for (const guild of discordClient.guilds.cache.values()) {
+      if (ids.has(guild.id)) continue;
+      const cached = guild.members.cache.get(String(discordUserId));
+      const member = cached || await guild.members.fetch(String(discordUserId)).catch(() => null);
+      if (member) ids.add(guild.id);
+    }
+  }
+  return getTenantsByIds([...ids]);
+}
+
 router.get('/mine', async (req, res) => {
   const identity = resolveUserIdentity(req);
   if (!identity?.id) return res.status(401).json({ success: false, error: 'Login required' });
   const discordGuilds = req.session?.discordGuilds || [];
-  const ids = discordGuilds.map((g) => g.id);
-  const tenants = await getTenantsByIds(ids);
+  const tenants = await listVisibleTenants(identity.id, discordGuilds);
   const onboardable = discordGuilds.filter((g) => {
     const already = tenants.some((t) => t.id === g.id && t.onboarded);
     return !already && (g.owner || canManageGuild(g.permissions));

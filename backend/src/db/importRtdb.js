@@ -20,6 +20,8 @@ function findExportFile() {
   const override = process.env.RTDB_EXPORT_PATH;
   if (override && fs.existsSync(override)) return override;
   const candidates = [
+    path.resolve(__dirname, '../../../auctionrooc-default-rtdb-export.json'),
+    path.resolve(process.cwd(), 'auctionrooc-default-rtdb-export.json'),
     path.resolve(__dirname, '../../../auctionrooc-default-rtdb-export-2.json'),
     path.resolve(process.cwd(), 'auctionrooc-default-rtdb-export-2.json'),
   ];

@@ -35,6 +35,18 @@ export async function getTenantsByIds(ids) {
   return rows;
 }
 
+export async function getTenantsForMember(discordUserId) {
+  if (!discordUserId) return [];
+  const { rows } = await query(
+    `SELECT DISTINCT t.id, t.display_name, t.owner_discord_id, t.plan, t.is_platform_owner, t.onboarded
+     FROM tenants t
+     INNER JOIN members m ON m.tenant_id = t.id
+     WHERE m.discord_id = $1`,
+    [String(discordUserId)]
+  );
+  return rows;
+}
+
 export async function createTenant({
   id,
   displayName = '',

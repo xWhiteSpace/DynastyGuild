@@ -6,7 +6,6 @@ export default function SelectGuildPage({ user, onSessionUser }) {
   const navigate = useNavigate();
   const [tenants, setTenants] = useState([]);
   const [onboardable, setOnboardable] = useState([]);
-  const [inviteUrl, setInviteUrl] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -23,7 +22,6 @@ export default function SelectGuildPage({ user, onSessionUser }) {
         }
         setTenants(data.tenants || []);
         setOnboardable(data.onboardable || []);
-        setInviteUrl(data.inviteUrl || '');
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -99,12 +97,10 @@ export default function SelectGuildPage({ user, onSessionUser }) {
 
         {!loading && tenants.length === 0 && onboardable.length === 0 && (
           <div className="mt-6 text-sm text-slate-400 space-y-3">
-            <p>No matching Discord servers yet. Invite the bot into a server you manage, then refresh this page.</p>
-            {inviteUrl && (
-              <a href={inviteUrl} className="inline-flex rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white">
-                Invite bot
-              </a>
-            )}
+            <p>
+              We could not list your Discord servers from this login. Log out and sign in with Discord again.
+              Do not invite the bot a second time if it is already in ASCENDANTS.
+            </p>
           </div>
         )}
       </div>

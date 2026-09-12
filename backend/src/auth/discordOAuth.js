@@ -3,9 +3,8 @@ import { Router } from 'express';
 import { getDatabase } from '../db/database.js';
 import { discordClient } from '../discord-bot/client.js';
 import { getCurrentTenantId } from '../db/tenantContext.js';
-import { getTenantsByIds } from '../db/tenants.js';
 import { signUserProfile } from './identity.js';
-import { buildSessionUser } from '../api/tenant.routes.js';
+import { buildSessionUser, listVisibleTenants } from '../api/tenant.routes.js';
 
 import crypto from 'crypto'; // 🛡️ Native cryptographic signature utility console
 import { logDiscordHttpFailure, isDiscordCircuitOpen, getDiscordRateLimitStatus, beginOAuthAttempt, endOAuthAttempt, markOAuthLoginClick, hydrateDiscordCircuit, resolveOAuthExchangeUrl, isLocalOAuthRedirect } from '../utils/discordRateLimit.js';
@@ -265,7 +264,7 @@ router.get('/callback', async (req, res) => {
     }));
     req.session.discordGuilds = discordGuilds;
 
-    const tenantRows = await getTenantsByIds(discordGuilds.map((g) => g.id));
+    const tenantRows = await listVisibleTenants(user.id, discordGuilds);
     const onboarded = tenantRows.filter((t) => t.onboarded);
     const baseUser = {
       id: user.id,
