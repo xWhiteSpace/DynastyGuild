@@ -1,5 +1,4 @@
 import { REST, Routes } from 'discord.js';
-import commandsManifest from '../discord-bot/commands/manifest.js';
 
 export const BOT_INVITE_PERMISSIONS = '311520775232';
 
@@ -17,14 +16,19 @@ export function botInviteUrl(guildId) {
   return `https://discord.com/oauth2/authorize?${params.toString()}`;
 }
 
-export async function deployGuildCommands(guildId) {
+export async function clearGuildCommands(guildId) {
   if (!guildId || !process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CLIENT_ID) {
-    throw new Error('Missing Discord credentials for slash command deploy');
+    throw new Error('Missing Discord credentials to clear guild commands');
   }
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
   const data = await rest.put(
     Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, guildId),
-    { body: commandsManifest }
+    { body: [] }
   );
   return data;
+}
+
+/** @deprecated Slash commands are removed; kept as an alias that clears the menu. */
+export async function deployGuildCommands(guildId) {
+  return clearGuildCommands(guildId);
 }

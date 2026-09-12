@@ -6,7 +6,6 @@ import RequestTab from './pages/RequestTab';
 import MimicBookTab from './pages/MimicBookTab';
 import RequestHistoryTab from './pages/RequestHistoryTab';
 import PastAuctionTab from './pages/PastAuctionTab';
-import SubmitEvidenceTab from './pages/SubmitEvidenceTab';
 import LandingPage from './pages/LandingPage';
 import SettingsTab from './pages/SettingsTab'; // ◄ 1. ENSURE THIS IMPORT IS UNCOMMENTED
 import { logoutUser } from './services/authService';
@@ -50,7 +49,7 @@ export function MimicBookProvider({ children }) {
   const [loadingLootHistory, setLoadingLootHistory] = useState(false);
   const [lootHistoryData, setLootHistoryData] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState({}); 
-  const [commitEvent, setCommitEvent] = useState('GuildLeague');
+  const [commitEvent, setCommitEvent] = useState('');
   const [availableEvents, setAvailableEvents] = useState({});
   const [commitDate, setCommitDate] = useState(() => formatGuildDate(new Date(), DEFAULT_TZ));
   const [committing, setCommittingSetting] = useState(false);
@@ -276,7 +275,7 @@ function AppShell({ authUser, onLogout, onSessionUser, macroTab, setMacroTab }) 
         <Route path="/mimic-book" element={<MimicBookTab user={authUser} />} />
         <Route path="/request-history" element={<RequestHistoryTab user={authUser} />} />
         <Route path="/past-auction" element={<PastAuctionTab />} />
-        <Route path="/submit-evidence" element={<SubmitEvidenceTab />} />
+        <Route path="/submit-evidence" element={<Navigate to="/" replace />} />
 
         {/* ⚙️ 2. MUST BE INSIDE THIS EXACT GROUP FOR FIRST-PARTY COMPONENT LAYOUTS */}
         <Route path="/settings-configuration" element={<SettingsTab />} />

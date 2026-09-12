@@ -134,8 +134,8 @@ export default function LiveRaidTab({ user }) {
     setIsDirty(value);
   };
 
-  // Monitoring SSOT: use the SAME timezone as the server-time clock (DEFAULT_TZ), never browser-local or settings drift
-  const msToTimeInput = (ms) => formatGuildTimeHhMm(ms, DEFAULT_TZ);
+  // Monitoring times use the selected guild timezone from Settings
+  const msToTimeInput = (ms) => formatGuildTimeHhMm(ms, guildTimezone || DEFAULT_TZ);
 
   /**
    * Auto-format typed digits into HH:MM.
@@ -903,7 +903,7 @@ export default function LiveRaidTab({ user }) {
           setSession(next);
           hydrateSetupFromSession(next);
           alert(
-            `Monitoring saved to Firebase:\n` +
+            `Monitoring saved:\n` +
             `attendance/live_session\n\n` +
             `monitoringStartsAt: ${monUpdate.monitoringStartsAt}\n` +
             `monitoringEndsAt: ${monUpdate.monitoringEndsAt}\n` +
@@ -953,13 +953,13 @@ export default function LiveRaidTab({ user }) {
     if (!session || !isOfficer) return;
     const ok = await persistLiveGrids(localGridsRef.current, { quiet: false });
     if (ok) {
-      alert('Live grid force-synced to Firebase.');
+      alert('Live grid force-synced.');
     }
   };
 
   // Monitoring SSOT: HH:MM is interpreted in the SAME timezone as the server-time clock (DEFAULT_TZ)
   const timeStringToTodayMs = (timeStr) => {
-    return guildWallTimeToUtcMs(timeStr, DEFAULT_TZ);
+    return guildWallTimeToUtcMs(timeStr, guildTimezone || DEFAULT_TZ);
   };
 
 
@@ -1578,7 +1578,7 @@ export default function LiveRaidTab({ user }) {
                       </div>
                       <div className="truncate">
                         <span className="text-[11px] font-bold font-sans block truncate">{roomObj.name || 'Unnamed Channel'}</span>
-                        <span className="text-[8px] font-mono text-slate-500 mt-0.5 block truncate">{roomObj.envKey}</span>
+                        <span className="text-[8px] font-mono text-slate-500 mt-0.5 block truncate">{roomId}</span>
                       </div>
                     </div>
                   );
@@ -1697,7 +1697,7 @@ export default function LiveRaidTab({ user }) {
                     const startTriggered = isScheduled && nowMs >= monitoringStartsAt;
                     const endTriggered = isScheduled && nowMs >= monitoringEndsAt;
                     // SSOT: render monitoring times in the SAME timezone as the server-time clock (DEFAULT_TZ)
-                    const fmt = (ms) => formatGuildTimeHhMm(ms, DEFAULT_TZ);
+                    const fmt = (ms) => formatGuildTimeHhMm(ms, guildTimezone || DEFAULT_TZ);
 
                     // Pulse progress: current pulses taken vs. total expected across the window
                     const pollMs = (Number(session.pollIntervalMinutes) || 0) * 60000;

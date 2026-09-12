@@ -5,34 +5,34 @@ import { DEFAULT_TZ } from '../utils/guildTime';
 import { apiFetch } from '../services/apiClient';
 import DiscordSignInButton from './DiscordSignInButton';
 
-// --- 🎨 PURE VECTOR MICRO-ICONS CONSOLE ---
 const IconUser = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
 const IconShield = () => <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
 const IconLogout = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>;
 const IconClock = () => <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 
-// Derive the short timezone label (e.g. "GMT+8") from the guild timezone
-const TZ_LABEL = (() => {
+function tzShortLabel(timezone) {
   try {
-    return new Intl.DateTimeFormat('en-US', { timeZone: DEFAULT_TZ, timeZoneName: 'short' })
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone || DEFAULT_TZ, timeZoneName: 'short' })
       .formatToParts(new Date())
-      .find(p => p.type === 'timeZoneName')?.value ?? DEFAULT_TZ;
+      .find((p) => p.type === 'timeZoneName')?.value ?? (timezone || DEFAULT_TZ);
   } catch {
-    return DEFAULT_TZ;
+    return timezone || DEFAULT_TZ;
   }
-})();
+}
 
 export default function UserPanel({ user, onLogout, onSessionUser }) {
   const navigate = useNavigate();
   const [clockDisplay, setClockDisplay] = useState('');
   const [tenants, setTenants] = useState([]);
+  const [onboardable, setOnboardable] = useState([]);
+  const [guildTz, setGuildTz] = useState(DEFAULT_TZ);
 
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       setClockDisplay(
         now.toLocaleTimeString('en-US', {
-          timeZone: DEFAULT_TZ,
+          timeZone: guildTz || DEFAULT_TZ,
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit',
@@ -43,14 +43,23 @@ export default function UserPanel({ user, onLogout, onSessionUser }) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [guildTz]);
 
   useEffect(() => {
     if (!user) return undefined;
     apiFetch('/api/tenants/mine', { method: 'GET' })
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) setTenants(data.tenants || []);
+        if (data.success) {
+          setTenants(data.tenants || []);
+          setOnboardable(data.onboardable || []);
+        }
+      })
+      .catch(() => {});
+    apiFetch('/api/requests/settings/get', { method: 'GET' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.config?.timezone) setGuildTz(data.config.timezone);
       })
       .catch(() => {});
     return undefined;
@@ -93,17 +102,16 @@ export default function UserPanel({ user, onLogout, onSessionUser }) {
                 ))}
               </select>
             )}
-            {tenants.length <= 1 && (
+            {onboardable.length > 0 && (
               <button
                 type="button"
                 onClick={() => navigate('/select-guild')}
                 className="mt-2 text-[10px] font-mono uppercase tracking-wider text-indigo-400 hover:text-indigo-300"
               >
-                Switch / add guild
+                Add Discord server
               </button>
             )}
             
-            {/* 🛡️ DYNAMIC LIVE CORE ROLES MONITOR CAPSULES */}
             {user.roles && user.roles.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2 select-none">
                 {user.roles.map((role, idx) => (
@@ -118,8 +126,7 @@ export default function UserPanel({ user, onLogout, onSessionUser }) {
             )}
           </div>
 
-          {/* Server-synced guild clock — displayed in guild timezone */}
-          <div className="flex flex-col items-center gap-0.5 px-4 border-x border-slate-800 select-none" title={`Server time · ${DEFAULT_TZ}`}>
+          <div className="flex flex-col items-center gap-0.5 px-4 border-x border-slate-800 select-none" title={`Guild time · ${guildTz}`}>
             <div className="flex items-center gap-1.5 text-slate-400">
               <IconClock />
               <span className="text-[9px] font-mono font-bold uppercase tracking-widest">Server Time</span>
@@ -127,7 +134,7 @@ export default function UserPanel({ user, onLogout, onSessionUser }) {
             <span className="text-base font-mono font-bold text-slate-200 tabular-nums leading-tight">
               {clockDisplay || '--:--:--'}
             </span>
-            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">{TZ_LABEL}</span>
+            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">{tzShortLabel(guildTz)}</span>
           </div>
           
           <button

@@ -62,13 +62,13 @@ function mergeDeep(base, patch) {
 }
 
 function resolveTenantId(tenantId) {
-  return tenantId || getCurrentTenantId() || process.env.DISCORD_GUILD_ID || null;
+  return tenantId || getCurrentTenantId() || null;
 }
 
 function requireTenant(tenantId) {
   const id = resolveTenantId(tenantId);
   if (!id) {
-    throw new Error('No tenant in context. Log in and select a Discord server, or set DISCORD_GUILD_ID.');
+    throw new Error('No tenant in context. Log in and select a Discord server first.');
   }
   return String(id);
 }

@@ -350,7 +350,7 @@ export default function RequestHistoryTab({ user }) {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center text-slate-400 font-medium animate-pulse">
-        Reading historical priority allocations from spreadsheet...
+        Reading historical priority allocations...
       </div>
     );
   }

@@ -437,6 +437,11 @@ export default function Scheduler({ user }) {
       
       {/* LEFT COMPONENT: CORE FULLCALENDAR ENGINE */}
       <div className="col-span-12 lg:col-span-9 space-y-4">
+        {Object.keys(eventsCatalog || {}).length === 0 && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-[11px] text-amber-300">
+            Set up events and timezone in Settings.
+          </div>
+        )}
         {user?.isOfficer && (
           <div className="bg-slate-900/40 border border-slate-800 h-[52px] px-5 rounded-2xl flex justify-between items-center select-none">
             <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider">Officer Tools:</span>

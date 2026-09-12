@@ -19,6 +19,7 @@ import {
 } from '@guildname/shared/compositionTabs';
 import { getCurrentTenantId } from '../db/tenantContext.js';
 import { discordChannel } from '../db/channels.js';
+import { isTenantOfficer } from '../auth/officer.js';
 
 const router = Router();
 
@@ -53,11 +54,7 @@ function resolveUserIdentity(req) {
 }
 
 function verifyOfficerPrivileges(user, allowedRoles = []) {
-  if (!user) return false;
-  if (user.roles && Array.isArray(user.roles)) {
-    return user.roles.some(r => allowedRoles.includes(r));
-  }
-  return user.isOfficer === true;
+  return isTenantOfficer(user, { adminRoles: allowedRoles }) || user?.isOfficer === true;
 }
 
 // Alias the name so it safely matches your existing dashboard checks across systems
@@ -71,7 +68,7 @@ router.post('/vanish', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -88,7 +85,7 @@ router.post('/vanish', async (req, res) => {
     let kicked = false;
     if (!isDummyTarget && discordClient && discordClient.isReady() && !isDiscordCircuitOpen()) {
       try {
-        const guild = discordClient.guilds.cache.get((getCurrentTenantId() || process.env.DISCORD_GUILD_ID));
+        const guild = discordClient.guilds.cache.get(getCurrentTenantId());
         const member = guild?.members?.cache.get(targetUid);
         if (member) {
           await enqueueDiscordCall(() =>
@@ -123,7 +120,7 @@ router.post('/update-roster-status', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -161,7 +158,7 @@ router.post('/begin-raid', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Action restricted to authorized Officers.' });
@@ -238,7 +235,7 @@ router.post('/end-raid', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -301,7 +298,7 @@ router.post('/update-job-target', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -326,7 +323,7 @@ router.post('/update-expected-rate', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -352,7 +349,7 @@ router.get('/deploy-card', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
@@ -376,7 +373,7 @@ router.get('/deploy-party-card', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
@@ -401,7 +398,7 @@ router.post('/announce-week', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -543,7 +540,7 @@ router.post('/special-events/add', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -584,7 +581,7 @@ router.delete('/special-events/:id', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -623,7 +620,7 @@ router.put('/special-events/:id', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
     
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -692,7 +689,7 @@ router.post('/compositions/create', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -742,7 +739,7 @@ router.post('/compositions/save', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -823,7 +820,7 @@ router.post('/compositions/duplicate', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -892,7 +889,7 @@ router.delete('/compositions/delete/:id', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -916,7 +913,7 @@ router.post('/roster/save-batch', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -974,7 +971,7 @@ router.post('/dummy/create', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, roles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -1018,7 +1015,7 @@ router.post('/dummy/create', async (req, res) => {
 });
 
 function requireOfficer(user, configSnap) {
-  const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+  const roles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
   return verifyDiscordOfficerRole(user, roles);
 }
 

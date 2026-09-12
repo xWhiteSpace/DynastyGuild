@@ -1,15 +1,13 @@
 import dns from 'node:dns';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { handleAuctionInteraction } from '../services/discordInteractiveAuction.js'; // 🕹️ Route live button boards
-import { getDatabase } from '../db/database.js';
-import { discordChannel } from '../db/channels.js';
-import { getTenant, forEachOnboardedTenant, loadTenantSettings, mergeChannelFallback } from '../db/tenants.js';
+import { getTenant, loadTenantSettings, forEachOnboardedTenant, mergeChannelFallback } from '../db/tenants.js';
 import { runWithTenant, setCachedConfig, setCachedChannels } from '../db/tenantContext.js';
 import { refreshTenantConfigCache } from '../config/timeWindow.js';
-import { handleSlashCommand, handleComponentInteraction } from './discordSlashcmd.js';
 import { handleAttendanceCardInteraction } from '../services/discordAttendanceCards.js';
 import { syncJobIconEmojis } from '../services/discordJobEmojis.js';
 import { handlePartyCardInteraction } from '../services/partyViewer.js';
+import { clearGuildCommands } from './deployGuild.js';
 
 import { Agent, ProxyAgent, setGlobalDispatcher } from 'undici';
 import { logDiscordRateLimit, isDiscordCircuitOpen, hydrateDiscordCircuit, getDiscordRateLimitStatus } from '../utils/discordRateLimit.js';
@@ -155,6 +153,14 @@ export async function initializeDiscordBot() {
     syncJobIconEmojis(discordClient).catch((err) => {
       console.warn('[JOB ICONS] Sync skipped:', err.message);
     });
+    forEachOnboardedTenant(async (tenant) => {
+      try {
+        await clearGuildCommands(tenant.id);
+        console.log(`[SLASH] Cleared guild commands for ${tenant.id}`);
+      } catch (err) {
+        console.warn(`[SLASH] Could not clear commands for ${tenant.id}:`, err.message);
+      }
+    }).catch((err) => console.warn('[SLASH] Command clear skipped:', err.message));
 
 async function withGuildTenant(guildId, fn) {
   if (!guildId) return fn();
@@ -204,17 +210,18 @@ async function withGuildTenant(guildId, fn) {
           return await handleAuctionInteraction(interaction);
         }
 
+        if (interaction.isChatInputCommand()) {
+          return await interaction.reply({
+            content: 'Slash commands were removed. Use the auction, attendance, or party cards in your mapped Discord channels.',
+            ephemeral: true,
+          }).catch(() => {});
+        }
+
         if (interaction.channelId !== discordChannel('DISCORD_GENROOM_ID_1')) {
           return await interaction.reply({
             content: '❌ System commands are strictly locked to the designated general room channel.',
             ephemeral: true
           }).catch(() => {});
-        }
-
-        if (interaction.isChatInputCommand()) {
-          await handleSlashCommand(interaction);
-        } else if (interaction.isStringSelectMenu() || interaction.isButton()) {
-          await handleComponentInteraction(interaction);
         }
       } catch (err) {
         console.error("❌ [GATEWAY INTERACTION ROUTE ERROR]: Failed to resolve command event:", err.message);
@@ -234,55 +241,6 @@ async function withGuildTenant(guildId, fn) {
         }
       }
       });
-    });
-
-    // 🛡️ Foundational Job Assignment Message Interceptor
-    discordClient.on('messageCreate', async (message) => {
-      try {
-        if (message.author.bot) return;
-        await withGuildTenant(message.guildId, async () => {
-        if (message.channelId !== discordChannel('DISCORD_GENROOM_ID_1')) return;
-
-        const content = message.content.trim();
-        if (content.startsWith('/job ') || content.startsWith('/jobchange ')) {
-          const parts = content.split(' ');
-          const inputJobName = parts.slice(1).join(' ').trim();
-          
-          if (!inputJobName) {
-            return await message.reply("❌ Please provide a job name. Example: `/job High Priest`").catch(() => {});
-          }
-
-          const db = getDatabase();
-          const configSnap = await db.ref('settings/configuration/jobs').once('value');
-          let matchedJobCode = null;
-          let matchedJobName = "";
-
-          if (configSnap.exists()) {
-            const jobsData = configSnap.val();
-            for (const [code, jobObj] of Object.entries(jobsData)) {
-              if (jobObj?.name?.toLowerCase() === inputJobName.toLowerCase()) {
-                matchedJobCode = code;
-                matchedJobName = jobObj.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedJobCode) {
-            return await message.reply(`❌ Job \`${inputJobName}\` is not registered in the system settings catalog by officers.`).catch(() => {});
-          }
-
-          // Atomically append property straight into the core global profile SSOT row
-          await db.ref(`auction/members/${message.author.id}`).update({
-            jobCode: matchedJobCode
-          });
-
-          await message.reply(`✅ Success! Your job specialization has been successfully updated to **${matchedJobName}** (\`${matchedJobCode}\`).`).catch(() => {});
-        }
-        });
-      } catch (err) {
-        console.error("⚠️ Error handling job text command trigger:", err.message);
-      }
     });
 
     // 📢 Automated Modular Announcement Scheduler Ticker (Evaluated every 60 seconds)

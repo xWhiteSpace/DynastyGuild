@@ -1,5 +1,4 @@
 import { REST, Routes } from 'discord.js';
-import commandsManifest from './commands/manifest.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,31 +12,22 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN)
 
 (async () => {
   try {
-    if (process.env.DATABASE_URL) {
-      await migrate();
-      const tenants = await listOnboardedTenants();
-      const ids = tenants.map((t) => t.id);
-      if (process.env.DISCORD_GUILD_ID && !ids.includes(process.env.DISCORD_GUILD_ID)) {
-        ids.push(process.env.DISCORD_GUILD_ID);
-      }
-      for (const guildId of ids) {
-        const data = await rest.put(
-          Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, guildId),
-          { body: commandsManifest },
-        );
-        console.log(`✅ Registered ${data.length} commands on ${guildId}`);
-      }
-      if (!ids.length) console.log('No onboarded tenants found. Set DISCORD_GUILD_ID or onboard a guild first.');
+    if (!process.env.DATABASE_URL) {
+      console.log('DATABASE_URL is required to clear slash commands for onboarded guilds.');
       return;
     }
-
-    console.log(`⏳ Initializing refresh for ${commandsManifest.length} slash commands...`);
-    const data = await rest.put(
-      Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID),
-      { body: commandsManifest },
-    );
-    console.log(`✅ Success! Registered ${data.length} commands to the test server.`);
+    await migrate();
+    const tenants = await listOnboardedTenants();
+    const ids = tenants.map((t) => t.id);
+    for (const guildId of ids) {
+      const data = await rest.put(
+        Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, guildId),
+        { body: [] },
+      );
+      console.log(`Cleared slash commands on ${guildId} (${data.length} remaining)`);
+    }
+    if (!ids.length) console.log('No onboarded tenants found.');
   } catch (error) {
-    console.error('❌ Failed to register slash commands:', error);
+    console.error('Failed to clear slash commands:', error);
   }
 })();

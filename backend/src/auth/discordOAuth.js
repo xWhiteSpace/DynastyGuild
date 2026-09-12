@@ -74,7 +74,7 @@ async function exchangeCodeForDiscordUser(code) {
         code,
         redirect_uri: redirectUri,
         client_id: process.env.DISCORD_CLIENT_ID,
-        guild_id: (getCurrentTenantId() || process.env.DISCORD_GUILD_ID),
+        guild_id: getCurrentTenantId() || undefined,
       }),
     });
     const payload = await bridgeRes.json().catch(() => ({}));
@@ -147,7 +147,7 @@ async function exchangeCodeForDiscordUser(code) {
 
   return {
     user: await userResponse.json(),
-    guildMember: await fetchGuildMemberWithUserToken(tokenData.access_token, (getCurrentTenantId() || process.env.DISCORD_GUILD_ID)),
+    guildMember: await fetchGuildMemberWithUserToken(tokenData.access_token, getCurrentTenantId()),
     memberStatus: 'local-direct',
     usedBridge: false,
     guilds: Array.isArray(guilds) ? guilds : [],
@@ -156,7 +156,7 @@ async function exchangeCodeForDiscordUser(code) {
 
 // 🛡️ REPAIRED ROSTER ENDPOINT
 router.get('/discord-members', async (req, res) => {
-  const guildId = (getCurrentTenantId() || process.env.DISCORD_GUILD_ID);
+  const guildId = getCurrentTenantId();
   if (!guildId) {
     return res.status(409).json({ error: 'Select a Discord server first.' });
   }

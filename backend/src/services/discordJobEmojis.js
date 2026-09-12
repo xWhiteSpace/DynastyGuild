@@ -50,10 +50,6 @@ function canManageEmojis(member) {
 export async function syncJobIconEmojis(client) {
   if (!client?.isReady()) return { synced: 0 };
   const guilds = [...client.guilds.cache.values()];
-  if (!guilds.length && process.env.DISCORD_GUILD_ID) {
-    const fetched = await enqueueDiscordCall(() => client.guilds.fetch(process.env.DISCORD_GUILD_ID)).catch(() => null);
-    if (fetched) guilds.push(fetched);
-  }
   let synced = 0;
   for (const guild of guilds) {
     synced += await syncJobIconsForGuild(guild);

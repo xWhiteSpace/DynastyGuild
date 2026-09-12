@@ -396,7 +396,7 @@ const [requestsByItemDetails, setRequestsByItemDetails] = useState({});
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
             {items.length === 0 ? (
               <div className="col-span-2 text-center py-16 bg-slate-900/10 border border-dashed border-slate-800 rounded-2xl text-xs text-slate-500 font-mono italic flex flex-col items-center justify-center gap-2">
-                <IconPackage /> No items are scheduled for registration in tonight's auction cycle.
+                <IconPackage /> Set up loot items and events in Settings.
               </div>
             ) : (
               items.map(item => {

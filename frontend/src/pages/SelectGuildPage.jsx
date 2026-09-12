@@ -106,7 +106,7 @@ export default function SelectGuildPage({ user, onSessionUser }) {
           <div className="mt-6 text-sm text-slate-400 space-y-3">
             <p>
               We could not list your Discord servers from this login. Log out and sign in with Discord again.
-              Do not invite the bot a second time if it is already in ASCENDANTS.
+              Do not invite the bot a second time if it is already in your Discord server.
             </p>
           </div>
         )}

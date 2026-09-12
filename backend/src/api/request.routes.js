@@ -4,6 +4,8 @@ import { getDatabase } from '../db/database.js';
 import { getGateStatusDetails } from '../config/timeWindow.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
 import { getCurrentTenantId } from '../db/tenantContext.js';
+import { checkOfficer, configNeedsSetup, isTenantOfficer, publicSettingsView } from '../auth/officer.js';
+import { loadTenantSettings, saveTenantDiscordChannels } from '../db/tenants.js';
 
 import crypto from 'crypto'; // 🛡️ Cryptographic token verification module
 import { isDiscordCircuitOpen, getDiscordRateLimitStatus, logDiscordHttpFailure } from '../utils/discordRateLimit.js';
@@ -97,11 +99,7 @@ function resolveUserIdentity(req) {
  * Compares the active Discord user profile arrays directly against authorized configurations
  */
 function verifyDiscordOfficerRole(user, allowedRoles = []) {
-  if (!user) return false;
-  if (user.roles && Array.isArray(user.roles)) {
-    return user.roles.some(roleName => allowedRoles.includes(roleName));
-  }
-  return user.isOfficer === true;
+  return isTenantOfficer(user, { adminRoles: allowedRoles }) || user?.isOfficer === true;
 }
 
 /**
@@ -198,48 +196,54 @@ let isMatch = false;
 
 /**
  * POST /api/requests/settings/unlock
- * Verifies master password against server-side variables
  */
-router.post('/settings/unlock', (req, res) => {
-  const { masterKey } = req.body;
-  const trueSecret = process.env.SETTINGS_MASTER_KEY;
-  const user = resolveUserIdentity(req);
-
-  if (user?.isOfficer) {
-    if (req.session) req.session.settingsUnlocked = true;
-    return res.json({ success: true, message: 'Officer configuration desk unlocked.' });
-  }
-
-  if (!trueSecret) {
-    return res.status(401).json({ success: false, error: 'Officers can unlock Settings. A master key is not configured.' });
-  }
-
-  if (masterKey === trueSecret) {
+router.post('/settings/unlock', async (req, res) => {
+  try {
+    const db = getDatabase();
+    const configSnap = await db.ref('settings/configuration').once('value');
+    const config = configSnap.exists() ? configSnap.val() : {};
+    const { user, ok } = await checkOfficer(req, config);
+    if (!user) return res.status(401).json({ success: false, error: 'Login required' });
+    if (!ok) {
+      return res.status(403).json({
+        success: false,
+        error: 'Officers of this Discord server can unlock Settings. Ask the person who set up the guild to add your Discord role name in Settings.',
+      });
+    }
+    const tenantId = req.tenantId || getCurrentTenantId();
     if (req.session) {
       req.session.settingsUnlocked = true;
+      req.session.settingsUnlockedTenantId = tenantId;
     }
-    return res.json({ success: true, message: 'Authorization verified. Configuration channels unlocked.' });
+    return res.json({ success: true, message: 'Officer configuration desk unlocked.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
-
-  return res.status(401).json({ success: false, error: 'Invalid configuration master verification key.' });
 });
 
 /**
  * GET /api/requests/settings/get
- * Extracts system options matrix directly out of Firebase paths
  */
 router.get('/settings/get', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    
-    if (!configSnap.exists()) {
-      const defaultData = { ...DEFAULT_CONFIGURATION };
-      await db.ref('settings/configuration').set(defaultData);
-      return res.json({ success: true, config: defaultData });
+    const config = configSnap.exists() ? configSnap.val() : { ...DEFAULT_CONFIGURATION };
+    const needsSetup = configNeedsSetup(config);
+    const { ok } = await checkOfficer(req, config);
+    const tenantId = req.tenantId || getCurrentTenantId();
+    const { discordChannels } = tenantId
+      ? await loadTenantSettings(tenantId)
+      : { discordChannels: {} };
+    if (!ok) {
+      return res.json({
+        success: true,
+        config: publicSettingsView(config),
+        needsSetup,
+        publicOnly: true,
+      });
     }
-
-    return res.json({ success: true, config: configSnap.val() });
+    return res.json({ success: true, config, needsSetup, publicOnly: false, discordChannels });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -247,21 +251,25 @@ router.get('/settings/get', async (req, res) => {
 
 /**
  * POST /api/requests/settings/save
- * Commits panel adjustments down into cloud storage nodes
  */
 router.post('/settings/save', async (req, res) => {
-  const user = resolveUserIdentity(req);
-  if (!req.session?.settingsUnlocked && !user?.isOfficer) {
-    return res.status(403).json({ success: false, error: 'Operation rejected: Configuration desk input gates are key locked.' });
-  }
-
   try {
     const { config } = req.body;
     if (!config) return res.status(400).json({ success: false, error: 'Omitted payload configuration parameter maps.' });
 
+    const { user, ok } = await checkOfficer(req, config);
+    if (!user) return res.status(401).json({ success: false, error: 'Login required' });
+    if (!ok) {
+      return res.status(403).json({ success: false, error: 'Officer access required to save Settings.' });
+    }
+
     const db = getDatabase();
     await db.ref('settings/configuration').set(config);
-    return res.json({ success: true, message: 'Global parameter fields synchronized successfully.' });
+    if (req.body.discordChannels) {
+      const tenantId = req.tenantId || getCurrentTenantId();
+      if (tenantId) await saveTenantDiscordChannels(tenantId, req.body.discordChannels);
+    }
+    return res.json({ success: true, message: 'Guild settings saved.' });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }
@@ -345,7 +353,7 @@ router.post('/update-session', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, allowedRoles)) {
       console.error(`🛑 [SECURITY OVERRIDE REJECTION]: User "${user.displayName || user.username}" lacks authorized management roles. Write blocked.`);
@@ -510,8 +518,13 @@ router.post('/sync-roster', async (req, res) => {
   const user = resolveUserIdentity(req);
   if (!user) return res.status(401).json({ success: false, error: 'Session identity missing' });
 
+  const db = getDatabase();
+  const configSnap = await db.ref('settings/configuration').once('value');
+  const { ok } = await checkOfficer(req, configSnap.exists() ? configSnap.val() : {});
+  if (!ok) return res.status(403).json({ success: false, error: 'Officer access required' });
+
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  const guildId = (getCurrentTenantId() || process.env.DISCORD_GUILD_ID);
+  const guildId = getCurrentTenantId();
 
   if (!botToken || !guildId) {
     return res.status(500).json({ success: false, error: 'Missing Discord credentials inside backend configurations.' });
@@ -904,7 +917,7 @@ export async function performCommitSession({ event, date, allocations, summary }
           atomicUpdates[`auction/loot_history/${newPushKey}`] = {
             id: newPushKey,
             date: timestampDate,
-            event: event || 'GuildLeague',
+            event: event || '',
             item: resolvedItem.name,
             itemId: itemKeyId,
             quantity: parseInt(itemData.qty, 10),
@@ -997,7 +1010,7 @@ export async function performCommitSession({ event, date, allocations, summary }
         atomicUpdates[`auction/past_auctions/${newPastAuctionKey}`] = {
           id: newPastAuctionKey,
           date: timestampDate,
-          event: event || 'GuildLeague',
+          event: event || '',
           item: resolvedItem.name,
           itemId: targetItemId,
           quantity: slots,
@@ -1025,7 +1038,7 @@ router.post('/commit-session', async (req, res) => {
   const db = getDatabase();
   const configSnap = await db.ref('settings/configuration').once('value');
   const dynamicConfig = configSnap.exists() ? configSnap.val() : {};
-  const allowedRoles = dynamicConfig.adminRoles || ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+  const allowedRoles = dynamicConfig.adminRoles || [];
 
   if (!verifyDiscordOfficerRole(user, allowedRoles)) {
     return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to authorized Discord Management Officers only.' });
@@ -1057,7 +1070,7 @@ router.post('/reset-priority', async (req, res) => {
   const db = getDatabase();
   const configSnap = await db.ref('settings/configuration').once('value');
   const dynamicConfig = configSnap.exists() ? configSnap.val() : {};
-  const allowedRoles = dynamicConfig.adminRoles || ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+  const allowedRoles = dynamicConfig.adminRoles || [];
   const timezone = dynamicConfig.timezone || "Asia/Manila";
   const itemsList = dynamicConfig.items || [];
 
@@ -1109,7 +1122,7 @@ router.post('/clear-history', async (req, res) => {
   const db = getDatabase();
   const configSnap = await db.ref('settings/configuration').once('value');
   const dynamicConfig = configSnap.exists() ? configSnap.val() : {};
-  const allowedRoles = dynamicConfig.adminRoles || ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+  const allowedRoles = dynamicConfig.adminRoles || [];
 
   if (!verifyDiscordOfficerRole(user, allowedRoles)) {
     return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to authorized Discord Management Officers only.' });

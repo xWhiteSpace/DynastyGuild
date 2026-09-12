@@ -130,7 +130,21 @@ export async function loadTenantSettings(tenantId) {
   return { configuration, discordChannels };
 }
 
+export async function saveTenantDiscordChannels(tenantId, discordChannels) {
+  const id = String(tenantId);
+  const payload = mergeChannelFallback(discordChannels || {});
+  await query(
+    `INSERT INTO tenant_settings (tenant_id, configuration, discord_channels)
+     VALUES ($1, '{}'::jsonb, $2::jsonb)
+     ON CONFLICT (tenant_id) DO UPDATE SET discord_channels = $2::jsonb, updated_at = NOW()`,
+    [id, JSON.stringify(payload)]
+  );
+  setCachedChannels(id, payload);
+  return payload;
+}
+
 export function envFallbackChannels() {
+  // One-time JSON import CLI only (importRtdb.js). Runtime Discord posts must not use this.
   return {
     guildId: process.env.DISCORD_GUILD_ID || '',
     auctionChannelId: process.env.DISCORD_AUCTION_CHANNEL_ID || '',
@@ -163,15 +177,13 @@ export async function forEachOnboardedTenant(fn) {
 }
 
 export function mergeChannelFallback(fromDb) {
-  const fallback = envFallbackChannels();
-  const warRooms = { ...fallback.warRooms, ...(fromDb?.warRooms || {}) };
   return {
-    guildId: fromDb?.guildId || fallback.guildId,
-    auctionChannelId: fromDb?.auctionChannelId || fallback.auctionChannelId,
-    aucreqChannelId: fromDb?.aucreqChannelId || fallback.aucreqChannelId,
-    genroomId: fromDb?.genroomId || fallback.genroomId,
-    attendanceId: fromDb?.attendanceId || fallback.attendanceId,
-    warAnnounceChannelId: fromDb?.warAnnounceChannelId || fallback.warAnnounceChannelId,
-    warRooms,
+    guildId: fromDb?.guildId || '',
+    auctionChannelId: fromDb?.auctionChannelId || '',
+    aucreqChannelId: fromDb?.aucreqChannelId || '',
+    genroomId: fromDb?.genroomId || '',
+    attendanceId: fromDb?.attendanceId || '',
+    warAnnounceChannelId: fromDb?.warAnnounceChannelId || '',
+    warRooms: { ...(fromDb?.warRooms || {}) },
   };
 }

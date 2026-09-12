@@ -36,19 +36,10 @@ export function resolveWarRoomChannelId(identifier, warRooms = {}) {
   const direct = discordChannel(token);
   if (direct) return direct;
 
-  if (catalogEntry?.envKey && process.env[catalogEntry.envKey]) {
-    return process.env[catalogEntry.envKey];
-  }
-
-  if (process.env[token]) {
-    return process.env[token];
-  }
-
   for (const room of Object.values(warRooms)) {
     if (room?.envKey === token) {
       const fromTenant = discordChannel(room.envKey);
       if (fromTenant) return fromTenant;
-      if (process.env[room.envKey]) return process.env[room.envKey];
     }
   }
 

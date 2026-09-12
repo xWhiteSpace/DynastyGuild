@@ -17,6 +17,8 @@ export default function OnboardGuildPage({ onSessionUser }) {
   const [inviteUrl, setInviteUrl] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [discordRoles, setDiscordRoles] = useState([]);
+  const [adminRoles, setAdminRoles] = useState([]);
   const [form, setForm] = useState({
     guildName: guild?.name || '',
     timezone: 'Asia/Manila',
@@ -36,15 +38,32 @@ export default function OnboardGuildPage({ onSessionUser }) {
       .then((r) => r.json())
       .then((data) => { if (data.url) setInviteUrl(data.url); })
       .catch(() => {});
+    apiFetch(`/api/tenants/discord-roles?guildId=${encodeURIComponent(guildId)}`, { method: 'GET' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setDiscordRoles(data.roles || []);
+        if (data.inviteUrl) setInviteUrl(data.inviteUrl);
+      })
+      .catch(() => {});
     return undefined;
   }, [guildId]);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
+  const toggleRole = (name) => {
+    setAdminRoles((prev) => (
+      prev.includes(name) ? prev.filter((r) => r !== name) : [...prev, name]
+    ));
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     if (!guildId) {
       setError('Pick a Discord server from the previous screen.');
+      return;
+    }
+    if (adminRoles.length === 0) {
+      setError('Pick at least one Discord role that should be officers.');
       return;
     }
     setSaving(true);
@@ -55,6 +74,7 @@ export default function OnboardGuildPage({ onSessionUser }) {
         body: JSON.stringify({
           guildId,
           ...form,
+          adminRoles,
         }),
       });
       const data = await res.json();
@@ -90,7 +110,7 @@ export default function OnboardGuildPage({ onSessionUser }) {
       <form onSubmit={submit} className="w-full max-w-xl rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-xl space-y-4">
         <h1 className="text-2xl font-semibold">Set up {guild?.name || 'your Discord server'}</h1>
         <p className="text-sm text-slate-400">
-          Invite the bot, then paste channel IDs (Discord Developer Mode → right-click channel → Copy Channel ID).
+          Invite the bot, pick which Discord roles are officers, then paste channel IDs (Developer Mode → right-click channel → Copy Channel ID).
         </p>
         {inviteUrl && (
           <a href={inviteUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-full bg-[#5865F2] px-5 py-2 text-sm font-semibold">
@@ -98,11 +118,33 @@ export default function OnboardGuildPage({ onSessionUser }) {
           </a>
         )}
         {error && <p className="text-xs text-rose-300 font-mono">{error}</p>}
-        {field('Guild display name', 'guildName', 'ASCENDANTS')}
+        {field('Guild display name', 'guildName', 'Your guild name')}
         {field('Timezone', 'timezone', 'Asia/Manila')}
+        <div>
+          <div className="text-xs text-slate-400 mb-2">Officer Discord roles</div>
+          {discordRoles.length === 0 && (
+            <p className="text-[11px] text-slate-500">Invite the bot first so we can list this server’s roles.</p>
+          )}
+          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+            {discordRoles.map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                onClick={() => toggleRole(role.name)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] border ${
+                  adminRoles.includes(role.name)
+                    ? 'border-indigo-500 bg-indigo-600 text-white'
+                    : 'border-slate-800 bg-slate-950 text-slate-300'
+                }`}
+              >
+                {role.name}
+              </button>
+            ))}
+          </div>
+        </div>
         {field('Auction announce channel ID', 'auctionChannelId', 'numbers only')}
         {field('Auction request / claim card channel ID', 'aucreqChannelId', '')}
-        {field('General / slash-command channel ID', 'genroomId', '')}
+        {field('General room channel ID', 'genroomId', '')}
         {field('Attendance thread parent channel ID', 'attendanceId', '')}
         {field('War-announce channel ID', 'warAnnounceChannelId', '')}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

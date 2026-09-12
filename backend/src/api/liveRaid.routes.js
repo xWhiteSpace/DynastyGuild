@@ -13,6 +13,7 @@ import {
   findCrossTabDuplicates,
   isSlotCoordKey,
 } from '@guildname/shared/compositionTabs';
+import { isTenantOfficer } from '../auth/officer.js';
 
 const router = Router();
 
@@ -48,11 +49,7 @@ function resolveUserIdentity(req) {
 }
 
 function verifyDiscordOfficerRole(user, allowedRoles = []) {
-  if (!user) return false;
-  if (user.roles && Array.isArray(user.roles)) {
-    return user.roles.some(r => allowedRoles.includes(r));
-  }
-  return user.isOfficer === true;
+  return isTenantOfficer(user, { adminRoles: allowedRoles }) || user?.isOfficer === true;
 }
 
 // Timezone End Timestamp Parser
@@ -570,7 +567,7 @@ router.post('/create', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
@@ -605,7 +602,7 @@ router.post('/create', async (req, res) => {
     if (resolvedWarRoomChannelIds.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'No valid Discord war room channels resolved. Verify Settings war room registry and backend DISCORD_WARROOM_ID_* environment variables.'
+        error: 'No valid Discord war room channels resolved. Map voice channel IDs in Settings.'
       });
     }
 
@@ -687,7 +684,7 @@ router.post('/update', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -724,6 +721,11 @@ router.post('/cell-update', async (req, res) => {
   if (!user) return res.status(401).json({ success: false, error: 'Authentication missing' });
   try {
     const db = getDatabase();
+    const configSnap = await db.ref('settings/configuration').once('value');
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
+    if (!verifyDiscordOfficerRole(user, allowedRoles)) {
+      return res.status(403).json({ success: false, error: 'Officer access required' });
+    }
     const { configId, coordKey, userId } = req.body;
     if (!configId || !coordKey) {
       return res.status(400).json({ success: false, error: 'Missing configId or coordKey.' });
@@ -798,7 +800,7 @@ router.post('/end', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -825,7 +827,7 @@ router.post('/cancel', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Access Denied.' });
@@ -916,7 +918,7 @@ router.post('/set-monitoring-time', async (req, res) => {
   try {
     const db = getDatabase();
     const configSnap = await db.ref('settings/configuration').once('value');
-    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : ["GUILD LEADER", "Vice Guild Leader", "Commander"];
+    const allowedRoles = configSnap.exists() ? (configSnap.val().adminRoles || []) : [];
 
     if (!verifyDiscordOfficerRole(user, allowedRoles)) {
       return res.status(403).json({ success: false, error: 'Officer access required' });

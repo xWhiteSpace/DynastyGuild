@@ -341,7 +341,7 @@ const [rawMembers, setRawMembers] = useState({});
     const historicalEventKeys = Object.keys(availableEvents || {});
     const selectedEventObj = Object.values(availableEvents || {}).find(ev => ev.title === commitEvent) || (historicalEventKeys.length > 0 ? availableEvents[historicalEventKeys[0]] : null);
     const allowedLootIds = selectedEventObj?.loots ? Object.keys(selectedEventObj.loots) : [];
-    const defaultTypeId = allowedLootIds[0] || (items[0]?.id || 'item_001');
+    const defaultTypeId = allowedLootIds[0] || (items[0]?.id || '');
     const defaultLimit = selectedEventObj?.loots?.[defaultTypeId] || 1;
 
     const updatedRows = [
@@ -362,7 +362,7 @@ const [rawMembers, setRawMembers] = useState({});
     if (!isAdminMode || !isOfficer || items.length === 0) return;
     if (!window.confirm("⚠️ DANGER: This will completely erase your active staging session and clear out all uncommitted changes. Are you sure you want to reset?")) return;
 
-    const defaultFirstItem = items[0]?.id || 'item_001';
+    const defaultFirstItem = items[0]?.id || '';
     const clearSessionBlueprint = {
       activeStep: 1,
       qtyPerPage: 4,
@@ -648,7 +648,7 @@ const [rawMembers, setRawMembers] = useState({});
         setBookCurrentPage(1);
         const currentActiveEvent = Object.values(availableEvents).find(ev => ev.title === commitEvent) || Object.values(availableEvents)[0];
         const scheduledLootIds = currentActiveEvent?.loots ? Object.keys(currentActiveEvent.loots) : [];
-        const dynamicFirstItemType = scheduledLootIds[0] || (items[0]?.id || 'item_001');
+        const dynamicFirstItemType = scheduledLootIds[0] || (items[0]?.id || '');
         const dynamicFirstItemLimit = currentActiveEvent?.loots?.[dynamicFirstItemType] || 1;
 
         setLootRows([{ id: 1, itemType: dynamicFirstItemType, startPage: 1, startPos: 1, endPage: 1, endPos: 4, limit: dynamicFirstItemLimit }]);
@@ -767,6 +767,9 @@ const [rawMembers, setRawMembers] = useState({});
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase">Game Auction Preview</h1>
           <p className="text-xs text-slate-400 mt-1">Mirrored Item Mapping & Input Console</p>
+          {(!items || items.length === 0) && (
+            <p className="text-[11px] text-amber-400 mt-2">Set up loot items and events in Settings.</p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           {isOfficer && (
@@ -1214,7 +1217,7 @@ const [rawMembers, setRawMembers] = useState({});
               <div className="flex justify-center gap-4 pt-1">
                 <button onClick={() => saveWorkspaceState({ activeStep: 3 })} disabled={committing} className="px-4 py-1.5 rounded-xl border border-slate-800 text-xs font-bold text-slate-400 hover:bg-slate-900 disabled:opacity-30 transition">Return to Preview</button>
                 <button onClick={handleCommitSessionAndFlash} disabled={committing} className="px-6 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs tracking-wider uppercase shadow-xl transition" >
-                  {committing ? "Writing Ledger Data..." : "COMMIT SESSION & ARCHIVE TO FIREBASE"}
+                  {committing ? "Writing Ledger Data..." : "COMMIT SESSION"}
                 </button>
               </div>
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { canManageGuild, resolveUserIdentity, signUserProfile } from '../auth/identity.js';
 import { createTenant, getTenant, getTenantsByIds, getTenantsForMember, markTenantOnboarded, loadTenantSettings } from '../db/tenants.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
-import { botInviteUrl, deployGuildCommands } from '../discord-bot/deployGuild.js';
+import { botInviteUrl, clearGuildCommands } from '../discord-bot/deployGuild.js';
 import { discordClient } from '../discord-bot/client.js';
 import { runWithTenant } from '../db/tenantContext.js';
 import { getDatabase } from '../db/database.js';
@@ -26,7 +26,7 @@ async function buildSessionUser(req, tenantId, baseUser) {
     displayName = (member.nickname || member.displayName || displayName).replace(/\//g, '_');
     roles = member.roles.cache.map((role) => role.name);
   }
-  const adminRoles = configuration.adminRoles || DEFAULT_CONFIGURATION.adminRoles;
+  const adminRoles = Array.isArray(configuration.adminRoles) ? configuration.adminRoles : [];
   const isOfficer = tenant.owner_discord_id === baseUser.id
     || roles.some((name) => adminRoles.includes(name));
 
@@ -71,11 +71,33 @@ router.post('/select', async (req, res) => {
   const tenant = await getTenant(tenantId);
   if (!tenant) return res.status(404).json({ success: false, error: 'Guild is not on this app yet' });
 
+  const visible = await listVisibleTenants(identity.id, req.session?.discordGuilds || []);
+  if (!visible.some((t) => String(t.id) === tenantId)) {
+    return res.status(403).json({ success: false, error: 'You are not a member of that Discord server' });
+  }
+
   const user = await buildSessionUser(req, tenantId, identity);
   const signed = signUserProfile(user);
   return req.session.save(() => {
     res.json({ success: true, user: signed, onboarded: Boolean(tenant.onboarded) });
   });
+});
+
+router.get('/discord-roles', async (req, res) => {
+  const identity = resolveUserIdentity(req);
+  if (!identity?.id) return res.status(401).json({ success: false, error: 'Login required' });
+  const guildId = String(req.query.guildId || '');
+  if (!guildId) return res.status(400).json({ success: false, error: 'guildId required' });
+  const guild = discordClient?.guilds?.cache?.get(guildId);
+  if (!guild) {
+    return res.status(409).json({ success: false, error: 'Invite the bot into this Discord server first', inviteUrl: botInviteUrl(guildId) });
+  }
+  await guild.roles.fetch().catch(() => {});
+  const roles = [...guild.roles.cache.values()]
+    .filter((role) => role.name !== '@everyone')
+    .sort((a, b) => b.position - a.position)
+    .map((role) => ({ id: role.id, name: role.name }));
+  return res.json({ success: true, roles });
 });
 
 router.post('/onboard', async (req, res) => {
@@ -92,6 +114,7 @@ router.post('/onboard', async (req, res) => {
     attendanceId,
     warAnnounceChannelId,
     warRooms = {},
+    adminRoles = [],
   } = req.body || {};
 
   if (!guildId) return res.status(400).json({ success: false, error: 'guildId required' });
@@ -119,6 +142,13 @@ router.post('/onboard', async (req, res) => {
     });
   }
 
+  const officerRoleNames = (Array.isArray(adminRoles) ? adminRoles : [])
+    .map((name) => String(name || '').trim())
+    .filter(Boolean);
+  if (officerRoleNames.length === 0) {
+    return res.status(400).json({ success: false, error: 'Pick at least one Discord role that should be officers' });
+  }
+
   const discordChannels = {
     guildId: String(guildId),
     auctionChannelId: auctionChannelId || '',
@@ -137,8 +167,9 @@ router.post('/onboard', async (req, res) => {
 
   const configuration = {
     ...DEFAULT_CONFIGURATION,
-    guildDisplayName: guildName || listed?.name || DEFAULT_CONFIGURATION.guildDisplayName,
+    guildDisplayName: guildName || listed?.name || '',
     timezone: timezone || DEFAULT_CONFIGURATION.timezone,
+    adminRoles: officerRoleNames,
   };
 
   await createTenant({
@@ -159,9 +190,9 @@ router.post('/onboard', async (req, res) => {
   });
 
   try {
-    await deployGuildCommands(guildId);
+    await clearGuildCommands(guildId);
   } catch (err) {
-    console.warn('Slash command deploy failed:', err.message);
+    console.warn('Slash command clear failed:', err.message);
   }
 
   const user = await buildSessionUser(req, guildId, identity);

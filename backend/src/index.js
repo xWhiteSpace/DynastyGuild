@@ -14,10 +14,12 @@ import { initializeEnv } from './config/env.js';
 import authRoutes from './auth/discordOAuth.js';
 import { migrate } from './db/migrate.js';
 import { query } from './db/pool.js';
-import { attachTenantContext } from './middleware/tenantContext.js';
+import { attachTenantContext, requireTenant } from './middleware/tenantContext.js';
 import tenantRoutes from './api/tenant.routes.js';
 import { discordChannel } from './db/channels.js';
 import { forEachOnboardedTenant } from './db/tenants.js';
+import { getDatabase } from './db/database.js';
+import { checkOfficer } from './auth/officer.js';
 import { initializeDiscordBot, discordClient, getDiscordBotHealth } from './discord-bot/client.js'; 
 import requestRoutes from './api/request.routes.js';
 import liveRaidRoutes, { resumeLiveRaidMonitoringIfNeeded } from './api/liveRaid.routes.js';
@@ -109,10 +111,10 @@ app.use(
 app.use(attachTenantContext);
 app.use('/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
-app.use('/api/requests', requestRoutes);
+app.use('/api/requests', requireTenant, requestRoutes);
 
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/live-raid', liveRaidRoutes);
+app.use('/api/attendance', requireTenant, attendanceRoutes);
+app.use('/api/live-raid', requireTenant, liveRaidRoutes);
 
 app.get('/', async (req, res) => {
   try {
@@ -129,7 +131,20 @@ app.get('/api/debug/discord-ratelimit', (req, res) => {
 });
 
 // 📟 TEMPORARY WEB PANEL TRIGGER FOR INTERACTIVE CARD DROP
-app.get('/api/deploy-auction-card', async (req, res) => {
+function requireOfficerTenant(req, res, next) {
+  requireTenant(req, res, () => {
+    (async () => {
+      const db = getDatabase();
+      const snap = await db.ref('settings/configuration').once('value');
+      const { user, ok } = await checkOfficer(req, snap.exists() ? snap.val() : {});
+      if (!user) return res.status(401).send('Login required');
+      if (!ok) return res.status(403).send('Officer access required');
+      next();
+    })().catch((err) => res.status(500).send(err.message));
+  });
+}
+
+app.get('/api/deploy-auction-card', requireOfficerTenant, async (req, res) => {
   try {
     // 🛡️ Secure Channel Separation: Directs the initialization card straight into your clean Auction Request lobby space
     const channelId = discordChannel('DISCORD_AUCREQ_CHANNEL_ID');
@@ -161,7 +176,7 @@ app.get('/api/deploy-auction-card', async (req, res) => {
 });
 
 // Per-event Attendance card → DISCORD_WARANNOUNCE_CHANNEL_ID
-app.get('/api/deploy-attendance-card', async (req, res) => {
+app.get('/api/deploy-attendance-card', requireOfficerTenant, async (req, res) => {
   try {
     const { deployPublicAttendanceCardToWarAnnounce } = await import('./services/discordAttendanceCards.js');
     await deployPublicAttendanceCardToWarAnnounce();
@@ -178,7 +193,7 @@ app.get('/api/deploy-attendance-card', async (req, res) => {
 });
 
 // Party Viewer card → DISCORD_WARANNOUNCE_CHANNEL_ID
-app.get('/api/deploy-party-card', async (req, res) => {
+app.get('/api/deploy-party-card', requireOfficerTenant, async (req, res) => {
   try {
     const { deployPublicPartyCardToWarAnnounce } = await import('./services/partyViewer.js');
     await deployPublicPartyCardToWarAnnounce();

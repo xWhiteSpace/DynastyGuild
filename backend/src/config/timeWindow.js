@@ -25,7 +25,7 @@ export async function refreshTenantConfigCache() {
       ...data,
       timezone: data.timezone || DEFAULT_CONFIGURATION.timezone,
       isForceLocked: data.isForceLocked !== undefined ? data.isForceLocked : false,
-      adminRoles: data.adminRoles || DEFAULT_CONFIGURATION.adminRoles,
+      adminRoles: Array.isArray(data.adminRoles) ? data.adminRoles : [],
       helpEmbedUrl: data.helpEmbedUrl || '',
       raidHelpEmbedUrl: data.raidHelpEmbedUrl || '',
       specialEventCategories: data.specialEventCategories || DEFAULT_CONFIGURATION.specialEventCategories,
@@ -108,6 +108,26 @@ const getModularDistance = (from, to) => (to - from + 10080) % 10080;
   let activeEventTitle = "Raid Session";
 
   const validEventIds = Object.keys(events || {}).filter(id => events[id]);
+
+  if (validEventIds.length === 0) {
+    return {
+      isGateOpen: false,
+      currentSessionLabel: 'Setup required',
+      nextStatusChangeMessage: 'Set up events in Settings',
+      currentPhase: 0,
+      phaseIntervals: { phase1: 'Unconfigured', phase2: 'Unconfigured', phase3: 'Unconfigured' },
+      eventId: '',
+      eventName: '',
+      activeEventId: '',
+      activeEventTitle: '',
+      helpEmbedUrl: cachedConfig.helpEmbedUrl || '',
+      raidHelpEmbedUrl: cachedConfig.raidHelpEmbedUrl || '',
+      timezone: timezone || 'Asia/Manila',
+      announcementMinutes: { phase1: [], phase2: null, phase3: null },
+      announcements: { phase1: [], phase2: null, phase3: null },
+      needsSetup: true,
+    };
+  }
 
   if (validEventIds.length > 0) {
     let minP3EndDistance = Infinity;
@@ -255,10 +275,10 @@ const computedAnnouncementMinutes = { phase1: [], phase2: null, phase3: null };
     // 🚀 CACHE EXPOSURE: Expose the synchronized memory timezone to save client network overhead
     timezone: timezone,
     announcementMinutes: computedAnnouncementMinutes,
-    announcements: selectedEventContext?.announcements || (events && typeof events === 'object' ? Object.values(events)[0]?.announcements : null) || {
-      phase1: ["07:00", "12:00", "19:00"],
-      phase2: "22:15",
-      phase3: "20:55"
+    announcements: selectedEventContext?.announcements || {
+      phase1: [],
+      phase2: null,
+      phase3: null
     }
   };
 }

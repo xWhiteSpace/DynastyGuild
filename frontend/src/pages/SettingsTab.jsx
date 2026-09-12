@@ -1,9 +1,6 @@
 // frontend/src/pages/SettingsTab.jsx
 import { useState, useEffect } from 'react';
-import { apiFetch, getAuthHeaders, getBackendUrl } from '../services/apiClient';
-
-// 🌐 Absolute target network routing parameters for cross-domain Vercel/Render deployments
-const backendUrl = getBackendUrl();
+import { apiFetch } from '../services/apiClient';
 
 const COMMON_TIMEZONES = [
   { value: 'Asia/Manila', label: 'Manila (GMT+8)' },
@@ -49,41 +46,41 @@ const IconX = () => <svg className="w-3 h-3" fill="none" stroke="currentColor" s
 const IconTag = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01"/></svg>;
 const IconMegaphone = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 11-5.8-1.6"/></svg>;
 const IconMoneyBag = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5c-.5-1 0-2 1-3h4c1 1 1.5 2 1 3M7 5h10l2.5 5.5A7 7 0 0112 21a7 7 0 01-7.5-10.5L7 5z"/><path d="M12 10v6M10 13.5c0 1 .8 1.5 2 1.5s2-.5 2-1.5-.8-1.5-2-1.5-2-.5-2-1.5.8-1.5 2-1.5 2 .5 2 1.5"/></svg>;
-const IconTerminal = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>;
-const IconCopy = () => <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>;
 
-const DISCORD_DEPLOY_SCRIPT = `# Run locally in VS Code / Terminal (NOT from the browser)
-# Requires backend/.env with these keys already filled:
-#   DISCORD_BOT_TOKEN
-#   DISCORD_CLIENT_ID
-#   DISCORD_GUILD_ID
+const EMPTY_DISCORD_CHANNELS = {
+  auctionChannelId: '',
+  aucreqChannelId: '',
+  genroomId: '',
+  attendanceId: '',
+  warAnnounceChannelId: '',
+  warRooms: {
+    DISCORD_WARROOM_ID_1: '',
+    DISCORD_WARROOM_ID_2: '',
+    DISCORD_WARROOM_ID_3: '',
+    DISCORD_WARROOM_ID_4: '',
+    DISCORD_WARROOM_ID_5: '',
+  },
+};
 
-cd backend
-npm run deploy-commands`;
-
-const DISCORD_CLEAR_SCRIPT = `# Run locally in VS Code / Terminal (NOT from the browser)
-# Requires backend/.env with these keys already filled:
-#   DISCORD_BOT_TOKEN
-#   DISCORD_CLIENT_ID
-#   DISCORD_GUILD_ID
-
-cd backend
-npm run uninstall-commands`;
+const EMPTY_WAR_ROOMS = {
+  room_001: { name: 'War room 1', envKey: 'DISCORD_WARROOM_ID_1' },
+  room_002: { name: 'War room 2', envKey: 'DISCORD_WARROOM_ID_2' },
+  room_003: { name: 'War room 3', envKey: 'DISCORD_WARROOM_ID_3' },
+  room_004: { name: 'War room 4', envKey: 'DISCORD_WARROOM_ID_4' },
+  room_005: { name: 'War room 5', envKey: 'DISCORD_WARROOM_ID_5' },
+};
 
 export default function SettingsTab() {
   const [isLocked, setIsLocked] = useState(true);
-  const [passphrase, setPassphrase] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [ephemeralBaseUrl, setEphemeralBaseUrl] = useState(() => (backendUrl || '').replace(/\/$/, ''));
   const [deployingCard, setDeployingCard] = useState(false);
   const [deployCardMsg, setDeployCardMsg] = useState(null);
   const [deployingAttendanceCard, setDeployingAttendanceCard] = useState(false);
   const [deployAttendanceMsg, setDeployAttendanceMsg] = useState(null);
   const [deployingPartyCard, setDeployingPartyCard] = useState(false);
   const [deployPartyMsg, setDeployPartyMsg] = useState(null);
-  const [deployScriptCopied, setDeployScriptCopied] = useState(false);
-  const [clearScriptCopied, setClearScriptCopied] = useState(false);
+  const [discordChannels, setDiscordChannels] = useState(EMPTY_DISCORD_CHANNELS);
   
   const [config, setConfig] = useState({
     guildDisplayName: '',
@@ -106,13 +103,7 @@ export default function SettingsTab() {
     liveRaidMaxConfigs: 5,
     liveRaidMaxWarRooms: 2,
     defaultLeaveCredits: 3,
-    warRooms: {
-      room_001: { name: 'Guild League Main', envKey: 'DISCORD_WARROOM_ID_1' },
-      room_002: { name: 'Guild League Main 2', envKey: 'DISCORD_WARROOM_ID_2' },
-      room_003: { name: 'Guild League Main 3', envKey: 'DISCORD_WARROOM_ID_3' },
-      room_004: { name: 'Guild League Main 4', envKey: 'DISCORD_WARROOM_ID_4' },
-      room_005: { name: 'Guild League Main 5', envKey: 'DISCORD_WARROOM_ID_5' }
-    }
+    warRooms: { ...EMPTY_WAR_ROOMS }
   });
 
   // State handles for inputting new items, roles, and events
@@ -126,16 +117,15 @@ export default function SettingsTab() {
   // Floating absolute alarm popover target per phase timeline row
   const [activeAlarmPopoverId, setActiveAlarmPopoverId] = useState(null);
 
-  /**
-   * 🛡️ AUTOMATED HEADER EXTRACTOR UTILITY
-   */
-  const getRequestHeaders = () => getAuthHeaders({ json: true });
-
   const loadGlobalConfigurationTree = async () => {
     try {
       const res = await apiFetch('/api/requests/settings/get', { method: 'GET' });
       const data = await res.json();
       if (data.success) {
+        if (data.publicOnly) {
+          setIsLocked(true);
+          return;
+        }
         setConfig({
           ...data.config,
           guildDisplayName: data.config.guildDisplayName || '',
@@ -145,14 +135,26 @@ export default function SettingsTab() {
           liveRaidMaxConfigs: data.config.liveRaidMaxConfigs ?? 5,
           liveRaidMaxWarRooms: data.config.liveRaidMaxWarRooms ?? 2,
           defaultLeaveCredits: data.config.defaultLeaveCredits ?? 3,
-          warRooms: data.config.warRooms || {
-            room_001: { name: 'Guild League Main', envKey: 'DISCORD_WARROOM_ID_1' },
-            room_002: { name: 'Guild League Main 2', envKey: 'DISCORD_WARROOM_ID_2' },
-            room_003: { name: 'Guild League Main 3', envKey: 'DISCORD_WARROOM_ID_3' },
-            room_004: { name: 'Guild League Main 4', envKey: 'DISCORD_WARROOM_ID_4' },
-            room_005: { name: 'Guild League Main 5', envKey: 'DISCORD_WARROOM_ID_5' }
-          }
+          warRooms: data.config.warRooms && Object.keys(data.config.warRooms).length
+            ? data.config.warRooms
+            : { ...EMPTY_WAR_ROOMS },
         });
+        if (data.discordChannels) {
+          setDiscordChannels({
+            ...EMPTY_DISCORD_CHANNELS,
+            ...data.discordChannels,
+            warRooms: {
+              ...EMPTY_DISCORD_CHANNELS.warRooms,
+              ...(data.discordChannels.warRooms || {}),
+            },
+          });
+        }
+        const unlockRes = await apiFetch('/api/requests/settings/unlock', {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        const unlockData = await unlockRes.json().catch(() => ({}));
+        setIsLocked(!unlockData.success);
       }
     } catch (err) {
       console.error("Error loading settings from server routing layer:", err);
@@ -166,22 +168,20 @@ export default function SettingsTab() {
   const handleVerifyPassphrase = async () => {
     try {
       setErrorMsg('');
-      const res = await fetch(`${backendUrl}/api/requests/settings/unlock`, {
+      const res = await apiFetch('/api/requests/settings/unlock', {
         method: 'POST',
-        headers: getRequestHeaders(),
-        credentials: 'include',
-        body: JSON.stringify({ masterKey: passphrase })
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (data.success) {
         setIsLocked(false);
         setErrorMsg('');
-        setPassphrase('');
+        loadGlobalConfigurationTree();
       } else {
-        setErrorMsg(data.error || 'Invalid configuration master verification key.');
+        setErrorMsg(data.error || 'Officers of this Discord server can unlock Settings.');
       }
     } catch (err) {
-      setErrorMsg('Network timeout connecting to server authentication gateway.');
+      setErrorMsg('Could not reach the server to unlock Settings.');
     }
   };
 
@@ -199,26 +199,10 @@ export default function SettingsTab() {
     }
   };
 
-  const deployCardHeaders = (base) => {
-    const headers = getAuthHeaders({ json: false });
-    if (/ngrok/i.test(base)) headers['ngrok-skip-browser-warning'] = 'true';
-    return headers;
-  };
-
   const postDeployRoute = async (path) => {
-    const base = (ephemeralBaseUrl || '').trim().replace(/\/$/, '');
-    if (!base) throw new Error('Backend base URL is required.');
-    const res = await fetch(`${base}${path}`, {
-      method: 'GET',
-      headers: deployCardHeaders(base),
-      credentials: 'include',
-    });
+    const res = await apiFetch(path, { method: 'GET' });
     const text = await res.text();
     if (!res.ok) {
-      if (/cannot get /i.test(text) || (res.status === 404 && /<!doctype html>/i.test(text))) {
-        throw new Error(`Cannot GET ${path} on ${base}. That ngrok/Render process must be running this repo’s latest backend (route lives next to /api/deploy-auction-card).`);
-      }
-      if (text.startsWith('<')) throw new Error(`Failed (${res.status}) from ${base}${path}`);
       throw new Error(text || `Failed (${res.status})`);
     }
     return text;
@@ -267,26 +251,6 @@ export default function SettingsTab() {
     } finally {
       setDeployingPartyCard(false);
       setTimeout(() => setDeployPartyMsg(null), 12000);
-    }
-  };
-
-  const handleCopyDiscordDeployScript = async () => {
-    try {
-      await navigator.clipboard.writeText(DISCORD_DEPLOY_SCRIPT);
-      setDeployScriptCopied(true);
-      setTimeout(() => setDeployScriptCopied(false), 2500);
-    } catch {
-      setErrorMsg('Could not copy script to clipboard.');
-    }
-  };
-
-  const handleCopyDiscordClearScript = async () => {
-    try {
-      await navigator.clipboard.writeText(DISCORD_CLEAR_SCRIPT);
-      setClearScriptCopied(true);
-      setTimeout(() => setClearScriptCopied(false), 2500);
-    } catch {
-      setErrorMsg('Could not copy script to clipboard.');
     }
   };
 
@@ -390,15 +354,13 @@ export default function SettingsTab() {
     try {
       setSuccessMsg('');
       setErrorMsg('');
-      const res = await fetch(`${backendUrl}/api/requests/settings/save`, {
+      const res = await apiFetch('/api/requests/settings/save', {
         method: 'POST',
-        headers: getRequestHeaders(),
-        credentials: 'include',
-        body: JSON.stringify({ config })
+        body: JSON.stringify({ config, discordChannels })
       });
       const data = await res.json();
       if (data.success) {
-        setSuccessMsg('Global configurations successfully saved and committed to Firebase.');
+        setSuccessMsg('Guild settings saved.');
         const name = (config.guildDisplayName || '').trim();
         document.title = `${name || 'Guild'} Guild App`;
         loadGlobalConfigurationTree();
@@ -415,23 +377,14 @@ export default function SettingsTab() {
       <div className="mx-auto max-w-md p-8 text-center text-white border border-slate-800 bg-slate-900 rounded-3xl mt-16 shadow-2xl animate-fadeIn">
         <div className="text-slate-500 mb-4 flex justify-center"><IconLock /></div>
         <h2 className="text-sm font-semibold tracking-wider uppercase text-slate-200">System Settings Locked</h2>
-        <p className="text-xs text-slate-400 mt-1 mb-6 font-sans">Input the environment master key to access configurations.</p>
-        
-        <input 
-          type="password"
-          value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
-          placeholder="Enter configuration master key..."
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-center text-amber-500 font-mono tracking-widest outline-none mb-3 focus:border-amber-500/40 transition"
-          onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassphrase()}
-        />
+        <p className="text-xs text-slate-400 mt-1 mb-6 font-sans">Only officers of this Discord server can open Settings. The person who set up the guild can add your Discord role name here after they unlock.</p>
         {errorMsg && <div className="text-[11px] font-sans font-medium text-rose-400 mb-3">{errorMsg}</div>}
         
         <button 
           onClick={handleVerifyPassphrase}
           className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold uppercase tracking-wider transition shadow-lg cursor-pointer"
         >
-          Verify & Unlock
+          Unlock
         </button>
       </div>
     );
@@ -598,35 +551,23 @@ export default function SettingsTab() {
             </div>
           </div>
 
-          {/* EPHEMERAL DISCORD CARDS — same ngrok/Render backend URL as auction */}
           <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-md space-y-4">
             <div>
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-300"><IconMegaphone /> Ephemeral Discord Cards</div>
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-300"><IconMegaphone /> Discord cards</div>
               <p className="text-[11px] text-slate-500 mt-1 font-normal">
-                Both Sends hit this backend (ngrok, Render, or localhost:5001) — the process that runs the Discord bot. Same URL you already use for the auction card.
+                Posts into this guild’s mapped channels using this app’s Discord bot.
               </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">Backend Base URL</label>
-              <input
-                type="text"
-                value={ephemeralBaseUrl}
-                onChange={(e) => setEphemeralBaseUrl(e.target.value)}
-                placeholder="https://your-tunnel.ngrok-free.dev"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 outline-none font-mono focus:border-slate-700"
-              />
             </div>
 
             <div className="space-y-2">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <span className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-400 font-mono truncate">
-                  {(ephemeralBaseUrl || '').trim().replace(/\/$/, '') || '—'}/api/deploy-auction-card
+                <span className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-400">
+                  Auction claim card → auction request channel
                 </span>
                 <button
                   type="button"
                   onClick={handleDeployAuctionCard}
-                  disabled={deployingCard || !(ephemeralBaseUrl || '').trim()}
+                  disabled={deployingCard}
                   className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[10px] font-bold uppercase tracking-wider text-white transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {deployingCard ? 'Sending…' : 'Send auction'}
@@ -639,13 +580,13 @@ export default function SettingsTab() {
 
             <div className="space-y-2 border-t border-slate-800/80 pt-3">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <span className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-400 font-mono truncate">
-                  {(ephemeralBaseUrl || '').trim().replace(/\/$/, '') || '—'}/api/deploy-attendance-card
+                <span className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-400">
+                  Attendance card → war-announce channel
                 </span>
                 <button
                   type="button"
                   onClick={handleDeployAttendanceCard}
-                  disabled={deployingAttendanceCard || !(ephemeralBaseUrl || '').trim()}
+                  disabled={deployingAttendanceCard}
                   className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[10px] font-bold uppercase tracking-wider text-white transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {deployingAttendanceCard ? 'Sending…' : 'Send attendance'}
@@ -655,19 +596,19 @@ export default function SettingsTab() {
                 <p className={`text-[10px] font-mono font-semibold ${deployAttendanceMsg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{deployAttendanceMsg.text}</p>
               )}
               <p className="text-[10px] text-slate-500">
-                Attendance posts a public launcher into the war-announce channel (<span className="font-mono text-slate-400">DISCORD_WARANNOUNCE_CHANNEL_ID</span>), not the auction-request channel. Click <span className="text-slate-300">Open Attendance</span> on that message for the personal ephemeral Confirm/Leave panel.
+                Members click Open Attendance for Confirm/Leave and job/role.
               </p>
             </div>
 
             <div className="space-y-2 border-t border-slate-800/80 pt-3">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <span className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-400 font-mono truncate">
-                  {(ephemeralBaseUrl || '').trim().replace(/\/$/, '') || '—'}/api/deploy-party-card
+                <span className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950 text-xs text-slate-400">
+                  Party card → war-announce channel
                 </span>
                 <button
                   type="button"
                   onClick={handleDeployPartyCard}
-                  disabled={deployingPartyCard || !(ephemeralBaseUrl || '').trim()}
+                  disabled={deployingPartyCard}
                   className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-[10px] font-bold uppercase tracking-wider text-white transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {deployingPartyCard ? 'Sending…' : 'Send party'}
@@ -676,64 +617,29 @@ export default function SettingsTab() {
               {deployPartyMsg && (
                 <p className={`text-[10px] font-mono font-semibold ${deployPartyMsg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{deployPartyMsg.text}</p>
               )}
-              <p className="text-[10px] text-slate-500">
-                Party posts a public launcher into war-announce. Members click <span className="text-slate-300">Open My Party</span> to see their P#-S# column, crown leader, and Class/Role list from the active Raid Compose.
-              </p>
             </div>
           </div>
 
-          {/* DISCORD BOT SLASH-COMMAND DEPLOY / CLEAR (LOCAL SCRIPTS) */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-md space-y-4">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-300"><IconTerminal /> Discord Bot Scripts</div>
-              <p className="text-[11px] text-slate-500 mt-1 font-normal">
-                Run these <strong className="text-slate-400 font-semibold">locally</strong> in VS Code&apos;s terminal — not from this web page — because they need Discord secrets (<span className="font-mono text-slate-400">DISCORD_BOT_TOKEN</span>, <span className="font-mono text-slate-400">DISCORD_CLIENT_ID</span>, <span className="font-mono text-slate-400">DISCORD_GUILD_ID</span>).
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-amber-500/20 bg-amber-950/15 px-3 py-2 text-[11px] text-amber-400/90 font-medium">
-              Where: open the GuildName repo in VS Code → Terminal → paste a script below.
-            </div>
-
-            {/* REGISTER / DEPLOY */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-[10px] font-mono font-bold text-emerald-400/80 uppercase tracking-wider">Register slash commands</label>
-                <button
-                  type="button"
-                  onClick={handleCopyDiscordDeployScript}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-950 hover:border-slate-700 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition cursor-pointer"
-                >
-                  <IconCopy /> {deployScriptCopied ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <pre className="w-full overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre select-all">
-{DISCORD_DEPLOY_SCRIPT}
-              </pre>
-              <p className="text-[10px] text-slate-600 font-mono">
-                Uses backend/.env · script: backend/src/discord-bot/deploy.js · npm run deploy-commands
-              </p>
-            </div>
-
-            {/* CLEAR / DELETE */}
-            <div className="space-y-2 border-t border-slate-800/80 pt-4">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-[10px] font-mono font-bold text-rose-400/80 uppercase tracking-wider">Clear / delete guild commands</label>
-                <button
-                  type="button"
-                  onClick={handleCopyDiscordClearScript}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-950 hover:border-slate-700 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition cursor-pointer"
-                >
-                  <IconCopy /> {clearScriptCopied ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <pre className="w-full overflow-x-auto rounded-xl border border-rose-900/30 bg-slate-950 px-3 py-3 text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre select-all">
-{DISCORD_CLEAR_SCRIPT}
-              </pre>
-              <p className="text-[10px] text-slate-600 font-mono">
-                Uses backend/.env · script: backend/src/discord-bot/uninstall.js · npm run uninstall-commands · Wipes all staging guild slash commands.
-              </p>
-            </div>
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-300"><IconGlobe /> Discord channel IDs</div>
+            <p className="text-[11px] text-slate-500">Stored for this guild only. Discord Developer Mode → right-click channel → Copy Channel ID.</p>
+            {[
+              ['auctionChannelId', 'Auction announce'],
+              ['aucreqChannelId', 'Auction request / claim card'],
+              ['genroomId', 'General room'],
+              ['attendanceId', 'Attendance parent'],
+              ['warAnnounceChannelId', 'War announce'],
+            ].map(([key, label]) => (
+              <label key={key} className="block text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                {label}
+                <input
+                  value={discordChannels[key] || ''}
+                  onChange={(e) => setDiscordChannels((prev) => ({ ...prev, [key]: e.target.value.trim() }))}
+                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono outline-none focus:border-slate-700"
+                  placeholder="Channel ID"
+                />
+              </label>
+            ))}
           </div>
 
           {/* HELP CANVASES EMBED LINK AREA */}
@@ -1201,22 +1107,21 @@ export default function SettingsTab() {
           <div className="space-y-4">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider"><IconGlobe /> Voice War Rooms Registry</div>
-              <p className="text-[10px] text-slate-500 mt-0.5">Map custom display names to the Discord voice room channel IDs configured in backend `.env` file.</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Display names and Discord voice channel IDs for this guild (not Render env vars).</p>
             </div>
 
             <div className="space-y-2.5 max-w-4xl font-mono text-xs">
               {['room_001', 'room_002', 'room_003', 'room_004', 'room_005'].map((roomId, idx) => {
-                const roomObj = config.warRooms?.[roomId] || { name: `Guild Voice Channel ${idx + 1}`, envKey: `DISCORD_WARROOM_ID_${idx + 1}` };
+                const envKey = `DISCORD_WARROOM_ID_${idx + 1}`;
+                const roomObj = config.warRooms?.[roomId] || { name: `War room ${idx + 1}`, envKey };
+                const channelId = discordChannels.warRooms?.[roomObj.envKey || envKey] || '';
                 return (
                   <div 
                     key={roomId}
                     className="grid grid-cols-12 items-center gap-3 border bg-slate-950/30 border-slate-900 p-2.5 rounded-xl shadow-sm group hover:border-slate-700 hover:bg-slate-900/10 transition-all duration-150"
                   >
                     <span className="col-span-2 text-[10px] text-slate-500 font-semibold tracking-tight select-none">
-                      {roomId.toUpperCase()}
-                    </span>
-                    <span className="col-span-3 text-[10px] text-indigo-400 font-bold tracking-wider select-none">
-                      {roomObj.envKey}
+                      Room {idx + 1}
                     </span>
                     <input 
                       type="text"
@@ -1226,13 +1131,27 @@ export default function SettingsTab() {
                           ...config.warRooms,
                           [roomId]: {
                             ...roomObj,
+                            envKey: roomObj.envKey || envKey,
                             name: e.target.value
                           }
                         };
                         setConfig(prev => ({ ...prev, warRooms: updatedWarRooms }));
                       }}
-                      className="col-span-7 bg-transparent border border-transparent focus:bg-slate-950 focus:border-slate-850 hover:border-slate-800 rounded-xl px-3 py-1 text-xs text-slate-200 outline-none font-sans font-medium transition shadow-none focus:shadow-inner"
-                      placeholder="Display name e.g. Guild League Main..."
+                      className="col-span-5 bg-transparent border border-transparent focus:bg-slate-950 focus:border-slate-850 hover:border-slate-800 rounded-xl px-3 py-1 text-xs text-slate-200 outline-none font-sans font-medium transition shadow-none focus:shadow-inner"
+                      placeholder="Display name"
+                    />
+                    <input
+                      type="text"
+                      value={channelId}
+                      onChange={(e) => {
+                        const key = roomObj.envKey || envKey;
+                        setDiscordChannels((prev) => ({
+                          ...prev,
+                          warRooms: { ...prev.warRooms, [key]: e.target.value.trim() },
+                        }));
+                      }}
+                      className="col-span-5 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1 text-xs text-slate-300 font-mono outline-none focus:border-slate-700"
+                      placeholder="Voice channel ID"
                     />
                   </div>
                 );
@@ -1554,7 +1473,7 @@ export default function SettingsTab() {
             onClick={handleSaveWorkspaceChanges} 
             className="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 text-xs font-semibold uppercase tracking-wider text-white transition shadow-xl cursor-pointer"
           >
-            Commit Parameters to Firebase
+            Save settings
           </button>
         </div>
       </div>
