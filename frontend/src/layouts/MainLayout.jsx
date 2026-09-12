@@ -49,7 +49,7 @@ export default function MainLayout({ children, user, onLogout, onSessionUser, ma
         </button>
       </div>
       <div className="flex flex-1">
-        <LeftNavBar macroTab={macroTab} />
+        <LeftNavBar macroTab={macroTab} user={user} />
         <main className="flex-1 p-6 lg:p-8">
           <div className="mb-6">
             <UserPanel user={user} onLogout={onLogout} onSessionUser={onSessionUser} />

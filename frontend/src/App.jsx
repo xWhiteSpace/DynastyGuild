@@ -170,10 +170,10 @@ export default function App() {
     loadUser();
   }, []);
 
-  // Browser tab: "Sign in" while logged out; "{Guild} Guild App" after auth
+  // Browser tab: RO Guild App while logged out; "{Guild} · RO Guild App" after auth
   useEffect(() => {
     if (!authUser) {
-      document.title = 'Sign in';
+      document.title = 'RO Guild App';
       return;
     }
     let cancelled = false;
@@ -183,9 +183,9 @@ export default function App() {
         const data = await res.json();
         if (cancelled) return;
         const name = (data?.guildDisplayName || '').trim();
-        document.title = `${name || 'Guild'} Guild App`;
+        document.title = name ? `${name} · RO Guild App` : 'RO Guild App';
       } catch {
-        if (!cancelled) document.title = 'Guild App';
+        if (!cancelled) document.title = 'RO Guild App';
       }
     })();
     return () => { cancelled = true; };

@@ -2,12 +2,29 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../services/apiClient';
 
+function readAuthIntent() {
+  const fromQuery = new URLSearchParams(window.location.search).get('intent');
+  if (fromQuery === 'signup' || fromQuery === 'signin') return fromQuery;
+  try {
+    const stored = sessionStorage.getItem('ro_guild_intent');
+    if (stored === 'signup' || stored === 'signin') return stored;
+  } catch {
+    /* ignore */
+  }
+  return 'signin';
+}
+
 export default function SelectGuildPage({ user, onSessionUser }) {
   const navigate = useNavigate();
   const [tenants, setTenants] = useState([]);
   const [onboardable, setOnboardable] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [intent, setIntent] = useState(readAuthIntent);
+
+  useEffect(() => {
+    setIntent(readAuthIntent());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,19 +75,38 @@ export default function SelectGuildPage({ user, onSessionUser }) {
     navigate('/onboard', { state: { guild } });
   };
 
+  const highlightSignup = intent === 'signup';
+  const noServers = !loading && tenants.length === 0 && onboardable.length === 0;
+  const signInEmpty = !loading && tenants.length === 0 && onboardable.length > 0 && !highlightSignup;
+  const signupEmpty = !loading && onboardable.length === 0 && tenants.length > 0 && highlightSignup;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-xl">
-        <h1 className="text-2xl font-semibold text-white">Choose a Discord server</h1>
+        <img src="/assets/brand/ro-guild-mark.png" alt="" className="h-10 w-10 mb-4" />
+        <h1 className="text-2xl font-semibold text-white">
+          {highlightSignup ? 'Create a workspace' : 'Open a guild'}
+        </h1>
         <p className="mt-2 text-sm text-slate-400">
-          Signed in as {user?.displayName || user?.username}. Each server has its own private roster and auctions.
+          Signed in as {user?.displayName || user?.username}. Each Discord server is its own private workspace.
         </p>
         {error && <p className="mt-4 text-xs text-rose-300 font-mono">{error}</p>}
         {loading && <p className="mt-6 text-xs uppercase tracking-widest text-slate-500">Loading servers…</p>}
 
+        {signInEmpty && (
+          <p className="mt-4 text-sm text-slate-400">
+            None of your Discord servers are on RO Guild App yet. Create a workspace below if you have Manage Server, or ask an officer of your guild to Get started.
+          </p>
+        )}
+        {signupEmpty && (
+          <p className="mt-4 text-sm text-slate-400">
+            You can still open a guild you already belong to. To create a new workspace you need Manage Server on a Discord server that is not set up yet.
+          </p>
+        )}
+
         {!loading && tenants.length > 0 && (
-          <div className="mt-6 space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Your guilds on this app</div>
+          <div className={`mt-6 space-y-2 ${highlightSignup ? 'opacity-80' : ''}`}>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Your guilds</div>
             {tenants.map((t) => (
               <button
                 key={t.id}
@@ -79,21 +115,28 @@ export default function SelectGuildPage({ user, onSessionUser }) {
                 className="w-full text-left rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 hover:border-indigo-500/50 transition"
               >
                 <div className="font-semibold">{t.displayName || t.id}</div>
-                <div className="text-[10px] font-mono text-slate-500 mt-1">{t.plan} · {t.onboarded ? 'ready' : 'needs setup'}</div>
+                <div className="text-[10px] font-mono text-slate-500 mt-1">{t.plan || 'free'} · {t.onboarded ? 'ready' : 'needs setup'}</div>
               </button>
             ))}
           </div>
         )}
 
         {!loading && onboardable.length > 0 && (
-          <div className="mt-8 space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Add a new Discord server</div>
+          <div className={`mt-8 space-y-2 ${highlightSignup ? '' : 'opacity-90'}`}>
+            <div className={`text-[10px] font-mono uppercase tracking-widest ${highlightSignup ? 'text-indigo-400' : 'text-slate-500'}`}>
+              Create a workspace
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Set up this Discord server as an RO Guild App workspace. Payments will attach here later.
+            </p>
             {onboardable.map((g) => (
               <button
                 key={g.id}
                 type="button"
                 onClick={() => startOnboard(g)}
-                className="w-full text-left rounded-xl border border-dashed border-slate-700 px-4 py-3 hover:border-indigo-500/50 transition"
+                className={`w-full text-left rounded-xl border border-dashed px-4 py-3 hover:border-indigo-500/50 transition ${
+                  highlightSignup ? 'border-indigo-500/40 bg-indigo-950/20' : 'border-slate-700'
+                }`}
               >
                 <div className="font-semibold">{g.name}</div>
                 <div className="text-[10px] font-mono text-slate-500 mt-1">Invite the bot, then map channels</div>
@@ -102,11 +145,13 @@ export default function SelectGuildPage({ user, onSessionUser }) {
           </div>
         )}
 
-        {!loading && tenants.length === 0 && onboardable.length === 0 && (
+        {noServers && (
           <div className="mt-6 text-sm text-slate-400 space-y-3">
             <p>
-              We could not list your Discord servers from this login. Log out and sign in with Discord again.
-              Do not invite the bot a second time if it is already in your Discord server.
+              Discord did not return any servers for this account. Create or join a Discord server, then try again.
+            </p>
+            <p>
+              Ask an officer of your guild to Get started, or Sign in after you join a server that already uses RO Guild App.
             </p>
           </div>
         )}

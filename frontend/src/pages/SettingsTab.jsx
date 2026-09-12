@@ -415,7 +415,7 @@ export default function SettingsTab() {
       if (data.success) {
         setSuccessMsg('Guild settings saved.');
         const name = (config.guildDisplayName || '').trim();
-        document.title = `${name || 'Guild'} Guild App`;
+        document.title = name ? `${name} · RO Guild App` : 'RO Guild App';
         loadGlobalConfigurationTree();
       } else {
         setErrorMsg(data.error || 'Failed to update dynamic configuration matrix.');
@@ -568,7 +568,7 @@ export default function SettingsTab() {
             <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-300">Guild Name</div>
-                <p className="text-[11px] text-slate-500 mt-1 font-normal">Shown in the browser tab after login as &quot;YourName Guild App&quot;. Leave blank to use &quot;Guild&quot;.</p>
+                <p className="text-[11px] text-slate-500 mt-1 font-normal">Shown in the browser tab after login as &quot;YourName · RO Guild App&quot;. Leave blank to use &quot;RO Guild App&quot;.</p>
               </div>
               <input
                 type="text"

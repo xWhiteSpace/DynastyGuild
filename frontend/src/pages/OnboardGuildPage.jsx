@@ -108,9 +108,10 @@ export default function OnboardGuildPage({ onSessionUser }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
       <form onSubmit={submit} className="w-full max-w-xl rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-xl space-y-4">
-        <h1 className="text-2xl font-semibold">Set up {guild?.name || 'your Discord server'}</h1>
+        <h1 className="text-2xl font-semibold">Create a workspace for {guild?.name || 'your Discord server'}</h1>
         <p className="text-sm text-slate-400">
-          Invite the bot, pick which Discord roles are officers, then paste channel IDs (Developer Mode → right-click channel → Copy Channel ID).
+          This creates the RO Guild App workspace for that Discord server. It stays on the free plan until payments exist.
+          Invite the bot, pick officer Discord roles, then paste channel IDs (Developer Mode → right-click channel → Copy Channel ID).
         </p>
         {inviteUrl && (
           <a href={inviteUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-full bg-[#5865F2] px-5 py-2 text-sm font-semibold">
@@ -167,7 +168,7 @@ export default function OnboardGuildPage({ onSessionUser }) {
           disabled={saving}
           className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
-          {saving ? 'Saving…' : '2. Finish setup'}
+          {saving ? 'Saving…' : '2. Create workspace'}
         </button>
       </form>
     </div>

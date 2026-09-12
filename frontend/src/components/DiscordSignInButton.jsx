@@ -13,7 +13,12 @@ const IconDiscord = () => (
  * Sign-in must not keep POSTing /oauth2/token from the Render IP during a
  * Cloudflare global block — each extra click extends the ban.
  */
-export default function DiscordSignInButton({ className = '', compact = false }) {
+export default function DiscordSignInButton({
+  className = '',
+  compact = false,
+  intent = 'signin',
+  label,
+}) {
   const params = new URLSearchParams(window.location.search);
   const urlBlocked = params.get('error') === 'discord_rate_limited';
   const urlUntil = params.get('until');
@@ -37,6 +42,20 @@ export default function DiscordSignInButton({ className = '', compact = false })
   );
   const until = urlUntil || remote?.untilHuman || remote?.remainingHuman;
   const disabled = blocked || clicked;
+  const resolvedIntent = intent === 'signup' ? 'signup' : 'signin';
+  const buttonLabel = label
+    || (compact ? 'Sign in' : resolvedIntent === 'signup' ? 'Get started with Discord' : 'Sign in with Discord');
+
+  const href = `${backendUrl}/auth/login?intent=${encodeURIComponent(resolvedIntent)}`;
+
+  const rememberIntent = () => {
+    try {
+      sessionStorage.setItem('ro_guild_intent', resolvedIntent);
+    } catch {
+      /* ignore */
+    }
+    setClicked(true);
+  };
 
   if (disabled) {
     return (
@@ -62,12 +81,12 @@ export default function DiscordSignInButton({ className = '', compact = false })
 
   return (
     <a
-      href={`${backendUrl}/auth/login`}
-      onClick={() => setClicked(true)}
+      href={href}
+      onClick={rememberIntent}
       className={className}
     >
       <IconDiscord />
-      {compact ? 'Sign in with Discord' : 'Sign in with Discord'}
+      {buttonLabel}
     </a>
   );
 }

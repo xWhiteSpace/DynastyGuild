@@ -34,7 +34,7 @@ const raidItems = [
   { label: 'Scheduler', path: '/attendance/scheduler', icon: IconScheduler }
 ];
 
-export default function LeftNavBar({ macroTab }) {
+export default function LeftNavBar({ macroTab, user }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [auctionHelpUrl, setAuctionHelpUrl] = useState('');
@@ -81,15 +81,25 @@ export default function LeftNavBar({ macroTab }) {
         <IconChevron collapsed={isCollapsed} />
       </button>
 
-      {/* Main Header Brand Context Layer */}
-      <div className={`mb-6 px-2 py-3 transition-all duration-200 overflow-hidden font-sans ${
-        isCollapsed ? 'h-0 opacity-0 mb-0 py-0' : 'opacity-100'
-      }`}>
-        <div className="text-sm font-bold uppercase tracking-wider text-slate-200">
-          {macroTab === 'raid' ? 'Raid Governance' : 'Auction Dashboard'}
-        </div>
-        <div className="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-0.5">
-          {macroTab === 'raid' ? 'Roster Management, Parties, Stats' : 'Request Item, View Bid, Review History.'}
+      {/* Brand: SaaS mark, guild name, then Auction / Raid module */}
+      <div className="mb-6 px-2 py-3 font-sans">
+        <img
+          src="/assets/brand/ro-guild-mark.png"
+          alt="RO Guild App"
+          className={`object-contain ${isCollapsed ? 'mx-auto h-8 w-8' : 'h-10 w-10'}`}
+        />
+        <div className={`mt-3 transition-all duration-200 overflow-hidden ${
+          isCollapsed ? 'h-0 opacity-0 mt-0' : 'opacity-100'
+        }`}>
+          <div className="text-sm font-semibold text-white truncate" title={user?.tenantName || ''}>
+            {user?.tenantName || 'Guild'}
+          </div>
+          <div className="text-sm font-bold uppercase tracking-wider text-slate-200 mt-3">
+            {macroTab === 'raid' ? 'Raid Governance' : 'Auction Dashboard'}
+          </div>
+          <div className="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-0.5">
+            {macroTab === 'raid' ? 'Roster Management, Parties, Stats' : 'Request Item, View Bid, Review History.'}
+          </div>
         </div>
       </div>
 

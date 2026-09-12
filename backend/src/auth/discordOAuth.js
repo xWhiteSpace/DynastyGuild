@@ -215,6 +215,10 @@ router.get('/discord-members', async (req, res) => {
   }
 });
 
+function normalizeAuthIntent(raw) {
+  return String(raw || '').toLowerCase() === 'signup' ? 'signup' : 'signin';
+}
+
 router.get('/login', async (req, res) => {
   const targetFrontend = getFrontendUrl();
   await hydrateDiscordCircuit();
@@ -228,15 +232,16 @@ router.get('/login', async (req, res) => {
     }
     return res.redirect(`${targetFrontend}/landing?error=login_busy`);
   }
-  const state = req.query.state || 'no_state';
+  const intent = normalizeAuthIntent(req.query.intent);
   const clientId = process.env.DISCORD_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.OAUTH_REDIRECT_URI);
   const scope = encodeURIComponent('identify guilds guilds.members.read');
-  res.redirect(`${discordApi}/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${encodeURIComponent(state)}`);
+  res.redirect(`${discordApi}/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${encodeURIComponent(intent)}`);
 });
 
 router.get('/callback', async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
+  const intent = normalizeAuthIntent(state);
   const targetFrontend = getFrontendUrl();
 
   if (!code) {
@@ -276,7 +281,7 @@ router.get('/callback', async (req, res) => {
     };
     req.session.user = baseUser;
 
-    if (onboarded.length === 1) {
+    if (onboarded.length === 1 && intent !== 'signup') {
       const sessionUser = await buildSessionUser(req, onboarded[0].id, baseUser);
       const signed = signUserProfile(sessionUser);
       return req.session.save(() => {
@@ -289,7 +294,7 @@ router.get('/callback', async (req, res) => {
     const signed = signUserProfile(baseUser);
     return req.session.save(() => {
       const encodedUser = encodeURIComponent(JSON.stringify(signed));
-      res.redirect(`${targetFrontend}/select-guild?auth_user=${encodedUser}`);
+      res.redirect(`${targetFrontend}/select-guild?auth_user=${encodedUser}&intent=${intent}`);
     });
   } catch (error) {
     console.error("❌ OAuth callback processing failed:", error);
