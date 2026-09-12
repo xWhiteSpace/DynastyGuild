@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
 CREATE TABLE IF NOT EXISTS tenant_settings (
   tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
   configuration JSONB NOT NULL DEFAULT '{}'::jsonb,

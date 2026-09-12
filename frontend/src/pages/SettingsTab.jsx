@@ -1,6 +1,7 @@
 // frontend/src/pages/SettingsTab.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../services/apiClient';
+import { guildMarkSrc, onGuildMarkError } from '../utils/guildLogo';
 
 const COMMON_TIMEZONES = [
   { value: 'Asia/Manila', label: 'Manila (GMT+8)' },
@@ -70,7 +71,7 @@ const EMPTY_WAR_ROOMS = {
   room_005: { name: 'War room 5', envKey: 'DISCORD_WARROOM_ID_5' },
 };
 
-export default function SettingsTab() {
+export default function SettingsTab({ user, onSessionUser }) {
   const [isLocked, setIsLocked] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -84,6 +85,7 @@ export default function SettingsTab() {
   
   const [config, setConfig] = useState({
     guildDisplayName: '',
+    guildLogoUrl: '',
     timezone: 'Asia/Manila',
     isForceLocked: false,
     helpEmbedUrl: '',
@@ -117,6 +119,14 @@ export default function SettingsTab() {
   const [editingEventKey, setEditingEventKey] = useState(null);
   // Floating absolute alarm popover target per phase timeline row
   const [activeAlarmPopoverId, setActiveAlarmPopoverId] = useState(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoInputRef = useRef(null);
+
+  const applySessionUser = (next) => {
+    if (!next) return;
+    localStorage.setItem('guild_raid_session', JSON.stringify(next));
+    onSessionUser?.(next);
+  };
 
   const loadGlobalConfigurationTree = async (retried = false) => {
     try {
@@ -135,7 +145,7 @@ export default function SettingsTab() {
           const unlockData = await unlockRes.json().catch(() => ({}));
           if (unlockData.success) {
             if (unlockData.user) {
-              localStorage.setItem('guild_raid_session', JSON.stringify(unlockData.user));
+              applySessionUser(unlockData.user);
             }
             return loadGlobalConfigurationTree(true);
           }
@@ -146,6 +156,7 @@ export default function SettingsTab() {
         setConfig({
           ...data.config,
           guildDisplayName: data.config.guildDisplayName || '',
+          guildLogoUrl: data.config.guildLogoUrl || '',
           helpEmbedUrl: data.config.helpEmbedUrl || '',
           raidHelpEmbedUrl: data.config.raidHelpEmbedUrl || '',
           adminRoles: Array.isArray(data.config.adminRoles) ? data.config.adminRoles : [],
@@ -174,7 +185,7 @@ export default function SettingsTab() {
         });
         const unlockData = await unlockRes.json().catch(() => ({}));
         if (unlockData.user) {
-          localStorage.setItem('guild_raid_session', JSON.stringify(unlockData.user));
+          applySessionUser(unlockData.user);
         }
       }
     } catch (err) {
@@ -214,7 +225,7 @@ export default function SettingsTab() {
       const data = await res.json();
       if (data.success) {
         if (data.user) {
-          localStorage.setItem('guild_raid_session', JSON.stringify(data.user));
+          applySessionUser(data.user);
         }
         setIsLocked(false);
         setErrorMsg('');
@@ -425,6 +436,53 @@ export default function SettingsTab() {
     }
   };
 
+  const handleImportLogo = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setLogoBusy(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      const body = new FormData();
+      body.append('logo', file);
+      const res = await apiFetch('/api/tenants/logo', { method: 'POST', body });
+      const data = await res.json();
+      if (!data.success) {
+        setErrorMsg(data.error || 'Could not import logo.');
+        return;
+      }
+      setConfig((prev) => ({ ...prev, guildLogoUrl: data.guildLogoUrl || '' }));
+      applySessionUser(data.user);
+      setSuccessMsg('Guild logo imported.');
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not import logo.');
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    setLogoBusy(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      const res = await apiFetch('/api/tenants/logo', { method: 'DELETE' });
+      const data = await res.json();
+      if (!data.success) {
+        setErrorMsg(data.error || 'Could not remove logo.');
+        return;
+      }
+      setConfig((prev) => ({ ...prev, guildLogoUrl: '' }));
+      applySessionUser(data.user);
+      setSuccessMsg('Guild logo removed.');
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not remove logo.');
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
   if (isLocked) {
     return (
       <div className="mx-auto max-w-md p-8 text-center text-white border border-slate-800 bg-slate-900 rounded-3xl mt-16 shadow-2xl animate-fadeIn">
@@ -578,6 +636,49 @@ export default function SettingsTab() {
                 maxLength={64}
                 className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-200 outline-none font-sans placeholder:text-slate-600"
               />
+            </div>
+
+            {/* CARD: GUILD LOGO */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">Guild Logo</div>
+                <p className="text-[11px] text-slate-500 mt-1 font-normal">
+                  png or jpg, max 512 KB. Shown in the sidebar and guild picker. If empty, the Discord server icon is used.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <img
+                  src={config.guildLogoUrl || user?.tenantLogoUrl || guildMarkSrc({ guildId: user?.currentTenantId })}
+                  alt=""
+                  onError={onGuildMarkError}
+                  className="h-11 w-11 rounded-xl object-cover bg-slate-950 border border-slate-800 shrink-0"
+                />
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                    className="hidden"
+                    onChange={handleImportLogo}
+                  />
+                  <button
+                    type="button"
+                    disabled={logoBusy}
+                    onClick={() => logoInputRef.current?.click()}
+                    className="w-full h-7 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:text-white text-[10px] font-semibold tracking-tight transition cursor-pointer shadow-sm disabled:opacity-50"
+                  >
+                    {logoBusy ? 'Working…' : 'Import Logo'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={logoBusy || !config.guildLogoUrl}
+                    onClick={handleRemoveLogo}
+                    className="w-full h-7 rounded-lg border border-slate-800 bg-slate-950 text-slate-500 hover:text-rose-300 text-[10px] font-semibold tracking-tight transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* CARD 3: LOOKBACK EXPIRATION */}

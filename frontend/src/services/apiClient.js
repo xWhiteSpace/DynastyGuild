@@ -49,12 +49,13 @@ export async function apiFetch(path, options = {}) {
   const url = path.startsWith('http') ? path : `${backendUrl}${path.startsWith('/') ? '' : '/'}${path}`;
   const method = String(rest.method || 'GET').toUpperCase();
   const hasBody = rest.body != null && rest.body !== '';
-  const sendJsonContentType = json && (hasBody || ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method));
+  const isFormData = typeof FormData !== 'undefined' && rest.body instanceof FormData;
+  const sendJsonContentType = json && !isFormData && (hasBody || ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method));
   const headers = {
     ...getAuthHeaders({ json: sendJsonContentType }),
     ...(extraHeaders || {}),
   };
-  if (method === 'GET' || method === 'HEAD') {
+  if (method === 'GET' || method === 'HEAD' || isFormData) {
     delete headers['Content-Type'];
     delete headers['content-type'];
   }

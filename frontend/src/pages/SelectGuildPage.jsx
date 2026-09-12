@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../services/apiClient';
+import { guildMarkSrc, onGuildMarkError } from '../utils/guildLogo';
 
 function readAuthIntent() {
   const fromQuery = new URLSearchParams(window.location.search).get('intent');
@@ -112,10 +113,18 @@ export default function SelectGuildPage({ user, onSessionUser }) {
                 key={t.id}
                 type="button"
                 onClick={() => selectTenant(t.id)}
-                className="w-full text-left rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 hover:border-indigo-500/50 transition"
+                className="w-full text-left rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 hover:border-indigo-500/50 transition flex items-center gap-3"
               >
-                <div className="font-semibold">{t.displayName || t.id}</div>
-                <div className="text-[10px] font-mono text-slate-500 mt-1">{t.plan || 'free'} · {t.onboarded ? 'ready' : 'needs setup'}</div>
+                <img
+                  src={guildMarkSrc({ logoUrl: t.logoUrl, guildId: t.id, icon: t.icon })}
+                  alt=""
+                  onError={onGuildMarkError}
+                  className="h-10 w-10 rounded-lg object-cover bg-slate-900 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">{t.displayName || t.id}</div>
+                  <div className="text-[10px] font-mono text-slate-500 mt-1">{t.plan || 'free'} · {t.onboarded ? 'ready' : 'needs setup'}</div>
+                </div>
               </button>
             ))}
           </div>
@@ -134,12 +143,20 @@ export default function SelectGuildPage({ user, onSessionUser }) {
                 key={g.id}
                 type="button"
                 onClick={() => startOnboard(g)}
-                className={`w-full text-left rounded-xl border border-dashed px-4 py-3 hover:border-indigo-500/50 transition ${
+                className={`w-full text-left rounded-xl border border-dashed px-4 py-3 hover:border-indigo-500/50 transition flex items-center gap-3 ${
                   highlightSignup ? 'border-indigo-500/40 bg-indigo-950/20' : 'border-slate-700'
                 }`}
               >
-                <div className="font-semibold">{g.name}</div>
-                <div className="text-[10px] font-mono text-slate-500 mt-1">Invite the bot, then map channels</div>
+                <img
+                  src={guildMarkSrc({ guildId: g.id, icon: g.icon })}
+                  alt=""
+                  onError={onGuildMarkError}
+                  className="h-10 w-10 rounded-lg object-cover bg-slate-900 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">{g.name}</div>
+                  <div className="text-[10px] font-mono text-slate-500 mt-1">Invite the bot, then map channels</div>
+                </div>
               </button>
             ))}
           </div>

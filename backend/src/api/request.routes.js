@@ -287,7 +287,11 @@ router.post('/settings/save', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Officer access required to save Settings.' });
     }
 
-    await db.ref('settings/configuration').set(config);
+    const nextConfig = {
+      ...config,
+      guildLogoUrl: storedConfig.guildLogoUrl || '',
+    };
+    await db.ref('settings/configuration').set(nextConfig);
     if (req.body.discordChannels) {
       const tenantId = req.tenantId || getCurrentTenantId();
       if (tenantId) await saveTenantDiscordChannels(tenantId, req.body.discordChannels);

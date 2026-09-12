@@ -3,6 +3,7 @@
  */
 export const DEFAULT_CONFIGURATION = {
   guildDisplayName: '',
+  guildLogoUrl: '',
   timezone: 'Asia/Manila',
   isForceLocked: false,
   adminRoles: [],

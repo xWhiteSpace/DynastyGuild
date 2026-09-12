@@ -4,7 +4,7 @@ import { getDatabase } from '../db/database.js';
 import { discordClient } from '../discord-bot/client.js';
 import { getCurrentTenantId } from '../db/tenantContext.js';
 import { resolveUserIdentity, signUserProfile } from './identity.js';
-import { buildSessionUser, listVisibleTenants } from '../api/tenant.routes.js';
+import { attachTenantLogo, buildSessionUser, listVisibleTenants } from '../api/tenant.routes.js';
 
 import { logDiscordHttpFailure, isDiscordCircuitOpen, getDiscordRateLimitStatus, beginOAuthAttempt, endOAuthAttempt, markOAuthLoginClick, hydrateDiscordCircuit, resolveOAuthExchangeUrl, isLocalOAuthRedirect } from '../utils/discordRateLimit.js';
 
@@ -314,7 +314,7 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   let user = resolveUserIdentity(req);
 
   if (!user) {
@@ -323,6 +323,12 @@ router.get('/me', (req, res) => {
 
   if (req.session?.currentTenantId) {
     user = { ...user, currentTenantId: req.session.currentTenantId };
+  }
+
+  try {
+    user = await attachTenantLogo(req, user);
+  } catch {
+    // keep the session user if logo lookup fails
   }
 
   return res.json({ authenticated: true, user });

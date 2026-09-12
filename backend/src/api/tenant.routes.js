@@ -1,14 +1,45 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { canManageGuild, resolveUserIdentity, signUserProfile } from '../auth/identity.js';
-import { rolesGrantOfficer } from '../auth/officer.js';
-import { claimTenantOwner, createTenant, getTenant, getTenantsByIds, getTenantsForMember, markTenantOnboarded, loadTenantSettings } from '../db/tenants.js';
+import { checkOfficer, rolesGrantOfficer } from '../auth/officer.js';
+import { claimTenantOwner, createTenant, getTenant, getTenantsByIds, getTenantsForMember, markTenantOnboarded, loadTenantSettings, setTenantLogoUrl } from '../db/tenants.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
 import { botInviteUrl, clearGuildCommands } from '../discord-bot/deployGuild.js';
 import { discordClient } from '../discord-bot/client.js';
 import { runWithTenant } from '../db/tenantContext.js';
 import { getDatabase } from '../db/database.js';
+import { deleteGuildLogo, LOGO_MAX_BYTES, resolveGuildLogoUrl, uploadGuildLogo } from '../services/guildLogo.js';
 
 const router = Router();
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: LOGO_MAX_BYTES, files: 1 },
+});
+
+function handleLogoUpload(req, res, next) {
+  logoUpload.single('logo')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ success: false, error: 'Logo must be 512 KB or smaller.' });
+    }
+    return res.status(400).json({ success: false, error: err.message || 'Upload failed.' });
+  });
+}
+
+function iconHashForGuild(req, tenantId) {
+  const listed = (req.session?.discordGuilds || []).find((g) => String(g.id) === String(tenantId));
+  const live = discordClient?.guilds?.cache?.get(String(tenantId));
+  return listed?.icon || live?.icon || null;
+}
+
+function effectiveLogoUrl(req, tenant, configuration) {
+  return resolveGuildLogoUrl({
+    logoUrl: tenant?.logo_url || configuration?.guildLogoUrl,
+    guildId: tenant?.id,
+    iconHash: iconHashForGuild(req, tenant?.id),
+  });
+}
 
 function mapRoleIdsToNames(guild, roleIds) {
   if (!guild || !Array.isArray(roleIds) || roleIds.length === 0) return [];
@@ -70,6 +101,7 @@ async function buildSessionUser(req, tenantId, baseUser) {
     roles: roleNames,
     currentTenantId: String(tenantId),
     tenantName: tenant.display_name || configuration.guildDisplayName || 'Guild',
+    tenantLogoUrl: effectiveLogoUrl(req, tenant, configuration),
     tenantOnboarded: Boolean(tenant.onboarded),
     isPlatformOwner: Boolean(tenant.is_platform_owner),
   };
@@ -232,6 +264,78 @@ router.post('/onboard', async (req, res) => {
   });
 });
 
+async function requireOfficerTenant(req, res) {
+  const identity = resolveUserIdentity(req);
+  if (!identity?.id) {
+    res.status(401).json({ success: false, error: 'Login required' });
+    return null;
+  }
+  const tenantId = req.tenantId || identity.currentTenantId || req.session?.currentTenantId;
+  if (!tenantId) {
+    res.status(409).json({ success: false, error: 'Select a Discord server first.', code: 'tenant_required' });
+    return null;
+  }
+  const { ok, tenant } = await checkOfficer(req);
+  if (!ok) {
+    res.status(403).json({ success: false, error: 'Officer access required to change the guild logo.' });
+    return null;
+  }
+  return { tenantId: String(tenant?.id || tenantId) };
+}
+
+router.post('/logo', handleLogoUpload, async (req, res) => {
+  try {
+    const ctx = await requireOfficerTenant(req, res);
+    if (!ctx) return;
+    if (!req.file?.buffer) {
+      return res.status(400).json({ success: false, error: 'Choose a png or jpg file.' });
+    }
+    const result = await uploadGuildLogo(ctx.tenantId, req.file.buffer);
+    if (!result.ok) return res.status(result.status).json({ success: false, error: result.error });
+    await setTenantLogoUrl(ctx.tenantId, result.url);
+    const identity = resolveUserIdentity(req);
+    const sessionUser = await buildSessionUser(req, ctx.tenantId, identity);
+    const signed = signUserProfile(sessionUser);
+    return req.session.save(() => {
+      res.json({ success: true, guildLogoUrl: result.url, user: signed });
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/logo', async (req, res) => {
+  try {
+    const ctx = await requireOfficerTenant(req, res);
+    if (!ctx) return;
+    const result = await deleteGuildLogo(ctx.tenantId);
+    if (!result.ok) return res.status(result.status).json({ success: false, error: result.error });
+    await setTenantLogoUrl(ctx.tenantId, '');
+    const identity = resolveUserIdentity(req);
+    const sessionUser = await buildSessionUser(req, ctx.tenantId, identity);
+    const signed = signUserProfile(sessionUser);
+    return req.session.save(() => {
+      res.json({ success: true, guildLogoUrl: '', user: signed });
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+export async function attachTenantLogo(req, user) {
+  const tenantId = req.session?.currentTenantId || user?.currentTenantId;
+  if (!user || !tenantId) return user;
+  const tenant = await getTenant(tenantId);
+  if (!tenant) return { ...user, currentTenantId: String(tenantId) };
+  const { configuration } = await loadTenantSettings(tenantId);
+  return {
+    ...user,
+    currentTenantId: String(tenantId),
+    tenantName: user.tenantName || tenant.display_name || configuration.guildDisplayName || 'Guild',
+    tenantLogoUrl: effectiveLogoUrl(req, tenant, configuration),
+  };
+}
+
 export async function listVisibleTenants(discordUserId, sessionGuilds = []) {
   const ids = new Set((sessionGuilds || []).map((g) => String(g.id)).filter(Boolean));
   const fromRoster = await getTenantsForMember(discordUserId);
@@ -258,13 +362,19 @@ router.get('/mine', async (req, res) => {
   });
   return res.json({
     success: true,
-    tenants: tenants.map((t) => ({
-      id: t.id,
-      displayName: t.display_name,
-      onboarded: t.onboarded,
-      plan: t.plan,
-      isPlatformOwner: t.is_platform_owner,
-    })),
+    tenants: tenants.map((t) => {
+      const listed = discordGuilds.find((g) => String(g.id) === String(t.id));
+      const live = discordClient?.guilds?.cache?.get(String(t.id));
+      return {
+        id: t.id,
+        displayName: t.display_name,
+        onboarded: t.onboarded,
+        plan: t.plan,
+        isPlatformOwner: t.is_platform_owner,
+        logoUrl: t.logo_url || '',
+        icon: listed?.icon || live?.icon || null,
+      };
+    }),
     onboardable,
     currentTenantId: req.session?.currentTenantId || identity.currentTenantId || null,
     inviteUrl: botInviteUrl(),

@@ -278,7 +278,7 @@ function AppShell({ authUser, onLogout, onSessionUser, macroTab, setMacroTab }) 
         <Route path="/submit-evidence" element={<Navigate to="/" replace />} />
 
         {/* ⚙️ 2. MUST BE INSIDE THIS EXACT GROUP FOR FIRST-PARTY COMPONENT LAYOUTS */}
-        <Route path="/settings-configuration" element={<SettingsTab />} />
+        <Route path="/settings-configuration" element={<SettingsTab user={authUser} onSessionUser={onSessionUser} />} />
 
         {/* 🛡️ Foundational Raid Governance Routes Mapping */}
         <Route path="/attendance/masterlist" element={<MasterListTab user={authUser} />} />

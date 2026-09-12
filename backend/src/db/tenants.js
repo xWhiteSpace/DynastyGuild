@@ -2,16 +2,18 @@ import { query } from './pool.js';
 import { getCurrentTenantId, runWithTenant, setCachedConfig, setCachedChannels } from './tenantContext.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
 
+const TENANT_COLUMNS = 'id, display_name, owner_discord_id, plan, is_platform_owner, onboarded, created_at, logo_url';
+
 export async function listTenants() {
   const { rows } = await query(
-    'SELECT id, display_name, owner_discord_id, plan, is_platform_owner, onboarded, created_at FROM tenants ORDER BY created_at ASC'
+    `SELECT ${TENANT_COLUMNS} FROM tenants ORDER BY created_at ASC`
   );
   return rows;
 }
 
 export async function listOnboardedTenants() {
   const { rows } = await query(
-    'SELECT id, display_name, owner_discord_id, plan, is_platform_owner, onboarded FROM tenants WHERE onboarded = TRUE'
+    `SELECT ${TENANT_COLUMNS} FROM tenants WHERE onboarded = TRUE`
   );
   return rows;
 }
@@ -19,7 +21,7 @@ export async function listOnboardedTenants() {
 export async function getTenant(id) {
   if (!id) return null;
   const { rows } = await query(
-    'SELECT id, display_name, owner_discord_id, plan, is_platform_owner, onboarded, created_at FROM tenants WHERE id = $1',
+    `SELECT ${TENANT_COLUMNS} FROM tenants WHERE id = $1`,
     [String(id)]
   );
   return rows[0] || null;
@@ -29,7 +31,7 @@ export async function getTenantsByIds(ids) {
   const list = (ids || []).map(String).filter(Boolean);
   if (!list.length) return [];
   const { rows } = await query(
-    'SELECT id, display_name, owner_discord_id, plan, is_platform_owner, onboarded FROM tenants WHERE id = ANY($1::text[])',
+    `SELECT ${TENANT_COLUMNS} FROM tenants WHERE id = ANY($1::text[])`,
     [list]
   );
   return rows;
@@ -38,7 +40,7 @@ export async function getTenantsByIds(ids) {
 export async function getTenantsForMember(discordUserId) {
   if (!discordUserId) return [];
   const { rows } = await query(
-    `SELECT DISTINCT t.id, t.display_name, t.owner_discord_id, t.plan, t.is_platform_owner, t.onboarded
+    `SELECT DISTINCT t.id, t.display_name, t.owner_discord_id, t.plan, t.is_platform_owner, t.onboarded, t.created_at, t.logo_url
      FROM tenants t
      INNER JOIN members m ON m.tenant_id = t.id
      WHERE m.discord_id = $1`,
@@ -139,6 +141,23 @@ export async function loadTenantSettings(tenantId) {
   setCachedConfig(tenantId, configuration);
   setCachedChannels(tenantId, discordChannels);
   return { configuration, discordChannels };
+}
+
+export async function setTenantLogoUrl(tenantId, logoUrl) {
+  const id = String(tenantId);
+  const url = logoUrl ? String(logoUrl) : null;
+  await query('UPDATE tenants SET logo_url = $2 WHERE id = $1', [id, url]);
+  await query(
+    `INSERT INTO tenant_settings (tenant_id, configuration, discord_channels)
+     VALUES ($1, jsonb_build_object('guildLogoUrl', COALESCE($2::text, '')), '{}'::jsonb)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       configuration = tenant_settings.configuration || jsonb_build_object('guildLogoUrl', COALESCE($2::text, '')),
+       updated_at = NOW()`,
+    [id, url]
+  );
+  const { configuration } = await loadTenantSettings(id);
+  setCachedConfig(id, configuration);
+  return url || '';
 }
 
 export async function saveTenantDiscordChannels(tenantId, discordChannels) {

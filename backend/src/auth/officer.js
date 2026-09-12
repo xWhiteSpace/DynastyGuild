@@ -148,6 +148,7 @@ export function helpSettingsView(config = {}) {
     raidHelpEmbedUrl: config.raidHelpEmbedUrl || '',
     timezone: config.timezone || 'Asia/Manila',
     guildDisplayName: config.guildDisplayName || '',
+    guildLogoUrl: config.guildLogoUrl || '',
   };
 }
 
@@ -163,6 +164,7 @@ export function publicSettingsView(config = {}) {
     raidHelpEmbedUrl: config.raidHelpEmbedUrl || '',
     timezone: config.timezone || 'Asia/Manila',
     guildDisplayName: config.guildDisplayName || '',
+    guildLogoUrl: config.guildLogoUrl || '',
     events: config.events || {},
     items: Array.isArray(config.items) ? config.items : [],
     jobs: config.jobs || {},

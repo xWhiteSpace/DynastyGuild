@@ -81,12 +81,16 @@ export default function LeftNavBar({ macroTab, user }) {
         <IconChevron collapsed={isCollapsed} />
       </button>
 
-      {/* Brand: SaaS mark, guild name, then Auction / Raid module */}
+      {/* Brand: guild mark, guild name, then Auction / Raid module */}
       <div className="mb-6 px-2 py-3 font-sans">
         <img
-          src="/assets/brand/ro-guild-mark.png"
-          alt="RO Guild App"
-          className={`object-contain ${isCollapsed ? 'mx-auto h-8 w-8' : 'h-10 w-10'}`}
+          src={user?.tenantLogoUrl || '/assets/brand/ro-guild-mark.png'}
+          alt={user?.tenantName || 'Guild'}
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = '/assets/brand/ro-guild-mark.png';
+          }}
+          className={`object-contain rounded-lg ${isCollapsed ? 'mx-auto h-8 w-8' : 'h-10 w-10'}`}
         />
         <div className={`mt-3 transition-all duration-200 overflow-hidden ${
           isCollapsed ? 'h-0 opacity-0 mt-0' : 'opacity-100'
