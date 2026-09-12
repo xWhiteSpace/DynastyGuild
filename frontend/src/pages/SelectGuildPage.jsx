@@ -17,6 +17,13 @@ export default function SelectGuildPage({ user, onSessionUser }) {
         const data = await res.json();
         if (cancelled) return;
         if (!data.success) {
+          if (res.status === 401 || data.error === 'Login required') {
+            localStorage.removeItem('guild_raid_session');
+            localStorage.removeItem('dynasty_raid_session');
+            onSessionUser(null);
+            navigate('/landing', { replace: true });
+            return;
+          }
           setError(data.error || 'Could not load Discord servers');
           return;
         }

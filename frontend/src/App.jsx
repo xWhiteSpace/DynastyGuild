@@ -114,12 +114,12 @@ export default function App() {
 
       if (authUserRaw) {
         try {
-          const parsedUser = JSON.parse(decodeURIComponent(authUserRaw));
-          // #region agent log
-          let roleDebug = null;
-          try { roleDebug = JSON.parse(decodeURIComponent(urlParams.get('role_debug') || '')); } catch { roleDebug = null; }
-          fetch('http://127.0.0.1:7549/ingest/fe8ee865-ad77-4dbd-8635-81be17d73b61',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2f98cb'},body:JSON.stringify({sessionId:'2f98cb',runId:'prod-compare',hypothesisId:'A',location:'App.jsx:auth_user',message:'prod/local session roles',data:{host:window.location.host,roleCount:Array.isArray(parsedUser?.roles)?parsedUser.roles.length:-1,roles:Array.isArray(parsedUser?.roles)?parsedUser.roles:[],isOfficer:parsedUser?.isOfficer===true,roleDebug},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
+          let parsedUser;
+          try {
+            parsedUser = JSON.parse(decodeURIComponent(authUserRaw));
+          } catch {
+            parsedUser = JSON.parse(authUserRaw);
+          }
           setAuthUser(parsedUser);
           localStorage.setItem(SESSION_KEY, JSON.stringify(parsedUser));
           localStorage.removeItem(LEGACY_SESSION_KEY);
@@ -151,17 +151,14 @@ export default function App() {
         const result = await response.json();
         
         if (result.authenticated && result.user) {
-          // Sync state and local storage with fresh information from the server
           setAuthUser(result.user);
           localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
           localStorage.removeItem(LEGACY_SESSION_KEY);
-        } else if (!initialInMemoryUser) {
-          // Only clear if we had no local fallback — mobile Safari often blocks cookies
+        } else {
           setAuthUser(null);
           localStorage.removeItem(SESSION_KEY);
           localStorage.removeItem(LEGACY_SESSION_KEY);
         }
-        // If /auth/me fails cookie but local signed profile exists, keep local session
       } catch (err) {
         // Fallback: If your server is briefly unreachable, trust local cache to prevent offline lockouts
         if (!initialInMemoryUser) {

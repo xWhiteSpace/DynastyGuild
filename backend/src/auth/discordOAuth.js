@@ -3,10 +3,9 @@ import { Router } from 'express';
 import { getDatabase } from '../db/database.js';
 import { discordClient } from '../discord-bot/client.js';
 import { getCurrentTenantId } from '../db/tenantContext.js';
-import { signUserProfile } from './identity.js';
+import { resolveUserIdentity, signUserProfile } from './identity.js';
 import { buildSessionUser, listVisibleTenants } from '../api/tenant.routes.js';
 
-import crypto from 'crypto'; // 🛡️ Native cryptographic signature utility console
 import { logDiscordHttpFailure, isDiscordCircuitOpen, getDiscordRateLimitStatus, beginOAuthAttempt, endOAuthAttempt, markOAuthLoginClick, hydrateDiscordCircuit, resolveOAuthExchangeUrl, isLocalOAuthRedirect } from '../utils/discordRateLimit.js';
 
 const router = Router();
@@ -311,42 +310,7 @@ router.get('/callback', async (req, res) => {
 });
 
 router.get('/me', (req, res) => {
-  let user = req.session?.user;
-  
-  if (!user) {
-    const fallbackToken = req.headers['x-user-profile'];
-    if (fallbackToken) {
-      try {
-        const decodedPayload = JSON.parse(decodeURIComponent(fallbackToken));
-        
-        if (decodedPayload && decodedPayload._sig) {
-          const clientSignature = decodedPayload._sig;
-          
-          // Re-serialize the profile to reconstruct and verify the signature hash
-          const profileToVerify = { ...decodedPayload };
-          delete profileToVerify._sig; // Isolate the signature from the verification payload
-          
-          const tokenSigningSecret = process.env.DISCORD_CLIENT_SECRET || 'backup_fallback_secret_key';
-          const expectedSignature = crypto
-            .createHmac('sha256', tokenSigningSecret)
-            .update(JSON.stringify(profileToVerify))
-            .digest('hex');
-            
-          // 🛡️ TAMPER CHECK: Grant access only if the client signature matches our cryptographic backend hash
-                  if (clientSignature === expectedSignature) {
-                    user = {
-                      ...profileToVerify,
-                      _sig: clientSignature
-                    };
-                  } else {
-                    console.error("🛑 [SECURITY MONITOR]: Unauthorized modification detected on x-user-profile token header payload!");
-                  }
-        }
-      } catch (e) {
-        console.error("❌ Failed to decode cross-domain profile header token inside /me check:", e.message);
-      }
-    }
-  }
+  let user = resolveUserIdentity(req);
 
   if (!user) {
     return res.status(200).json({ authenticated: false, user: null });

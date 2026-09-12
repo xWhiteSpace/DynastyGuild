@@ -1,41 +1,64 @@
 import crypto from 'crypto';
 
-export function resolveUserIdentity(req) {
-  if (req.session?.user) return req.session.user;
-  const mobileHeaderToken = req.headers['x-user-profile'];
-  if (mobileHeaderToken) {
+function signingSecret() {
+  return process.env.DISCORD_CLIENT_SECRET || 'backup_fallback_secret_key';
+}
+
+function hmacHex(payload) {
+  return crypto.createHmac('sha256', signingSecret()).update(payload).digest('hex');
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) sorted[key] = value[key];
+  return JSON.stringify(sorted);
+}
+
+function parseProfileHeader(raw) {
+  if (!raw) return null;
+  const text = String(raw);
+  try {
+    return JSON.parse(decodeURIComponent(text));
+  } catch {
     try {
-      const decodedPayload = JSON.parse(decodeURIComponent(mobileHeaderToken));
-      if (decodedPayload && decodedPayload._sig) {
-        const clientSignature = decodedPayload._sig;
-        const profileToVerify = { ...decodedPayload };
-        delete profileToVerify._sig;
-
-        const tokenSigningSecret = process.env.DISCORD_CLIENT_SECRET || 'backup_fallback_secret_key';
-        const expectedSignature = crypto
-          .createHmac('sha256', tokenSigningSecret)
-          .update(JSON.stringify(profileToVerify))
-          .digest('hex');
-
-        if (clientSignature === expectedSignature) {
-          return profileToVerify;
-        }
-        console.error('🛑 [API ROUTE INTERCEPT]: Detected forged header signature tamper attempt!');
-      }
-    } catch (e) {
-      console.error('Failed to parse mobile authorization header token:', e.message);
+      return JSON.parse(text);
+    } catch {
+      return null;
     }
   }
-  return null;
+}
+
+function profileMatchesSignature(profile, signature) {
+  const { _sig, ...rest } = profile;
+  const candidates = [JSON.stringify(rest), stableStringify(rest)];
+  if (rest.displayName !== undefined) {
+    const unsigned = { ...rest };
+    candidates.push(JSON.stringify(unsigned));
+  }
+  return candidates.some((payload) => hmacHex(payload) === signature);
+}
+
+export function resolveUserIdentity(req) {
+  if (req.session?.user) return req.session.user;
+  const decodedPayload = parseProfileHeader(req.headers['x-user-profile']);
+  if (!decodedPayload?._sig) return null;
+
+  if (!profileMatchesSignature(decodedPayload, decodedPayload._sig)) {
+    console.error('🛑 [API ROUTE INTERCEPT]: x-user-profile signature did not match DISCORD_CLIENT_SECRET.');
+    return null;
+  }
+
+  const profile = { ...decodedPayload };
+  delete profile._sig;
+  return profile;
 }
 
 export function signUserProfile(user) {
-  const tokenSigningSecret = process.env.DISCORD_CLIENT_SECRET || 'backup_fallback_secret_key';
-  const computedPayloadHash = crypto
-    .createHmac('sha256', tokenSigningSecret)
-    .update(JSON.stringify(user))
-    .digest('hex');
-  return { ...user, _sig: computedPayloadHash };
+  const { _sig, ...rest } = user || {};
+  return { ...rest, _sig: hmacHex(stableStringify(rest)) };
 }
 
 export function canManageGuild(permissions) {
