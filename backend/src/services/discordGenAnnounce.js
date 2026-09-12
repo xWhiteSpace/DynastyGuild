@@ -3,9 +3,10 @@
  * War-announce launchers stay separate; this only posts channel text.
  */
 import { enqueueDiscordCall, isDiscordCircuitOpen } from '../utils/discordRateLimit.js';
+import { discordChannel } from '../db/channels.js';
 
 function warAnnounceMention() {
-  const warId = (process.env.DISCORD_WARANNOUNCE_CHANNEL_ID || '').trim();
+  const warId = (discordChannel('DISCORD_WARANNOUNCE_CHANNEL_ID') || '').trim();
   return warId ? `<#${warId}>` : 'war-announce';
 }
 
@@ -23,7 +24,7 @@ export function buildPartyReadyAnnounce({ eventTitle, eventDate }) {
 }
 
 export async function sendGenRoomMessage(content) {
-  const genRoomId = (process.env.DISCORD_GENROOM_ID_1 || '').trim();
+  const genRoomId = (discordChannel('DISCORD_GENROOM_ID_1') || '').trim();
   if (!genRoomId) {
     throw new Error('DISCORD_GENROOM_ID_1 is not configured.');
   }

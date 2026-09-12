@@ -1,6 +1,6 @@
 // backend/src/api/liveRaid.routes.js
 import { Router } from 'express';
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { discordClient } from '../discord-bot/client.js';
 import crypto from 'crypto';
 import {

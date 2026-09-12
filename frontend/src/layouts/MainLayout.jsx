@@ -2,7 +2,7 @@ import LeftNavBar from '../components/LeftNavBar';
 import UserPanel from '../components/UserPanel';
 import { useEffect, useRef, useState } from 'react';
 
-export default function MainLayout({ children, user, onLogout, macroTab, setMacroTab }) {
+export default function MainLayout({ children, user, onLogout, onSessionUser, macroTab, setMacroTab }) {
   const [macroBarVisible, setMacroBarVisible] = useState(true);
   const lastScrollY = useRef(0);
 
@@ -52,7 +52,7 @@ export default function MainLayout({ children, user, onLogout, macroTab, setMacr
         <LeftNavBar macroTab={macroTab} />
         <main className="flex-1 p-6 lg:p-8">
           <div className="mb-6">
-            <UserPanel user={user} onLogout={onLogout} />
+            <UserPanel user={user} onLogout={onLogout} onSessionUser={onSessionUser} />
           </div>
           {children}
         </main>

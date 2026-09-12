@@ -20,6 +20,8 @@ import LiveRaidTab from './pages/LiveRaidTab';
 import AttendanceHistoryTab from './pages/AttendanceHistoryTab';
 
 import Scheduler from './pages/Scheduler';
+import SelectGuildPage from './pages/SelectGuildPage';
+import OnboardGuildPage from './pages/OnboardGuildPage';
 import { apiFetch } from './services/apiClient';
 import { formatGuildDate, DEFAULT_TZ } from './utils/guildTime';
 
@@ -201,6 +203,11 @@ export default function App() {
     window.location.assign('/landing');
   };
 
+  const handleSessionUser = (nextUser) => {
+    setAuthUser(nextUser);
+    if (nextUser) localStorage.setItem(SESSION_KEY, JSON.stringify(nextUser));
+  };
+
   // Landing is public — don't block it behind session sync
   if (authLoading && window.location.pathname !== '/landing') {
     return (
@@ -216,6 +223,7 @@ export default function App() {
         <AppShell
           authUser={authUser}
           onLogout={handleLogout}
+          onSessionUser={handleSessionUser}
           macroTab={macroTab}
           setMacroTab={setMacroTab}
         />
@@ -225,7 +233,7 @@ export default function App() {
 }
 
 /** Landing is full-bleed (no nav chrome); everything else stays in MainLayout. */
-function AppShell({ authUser, onLogout, macroTab, setMacroTab }) {
+function AppShell({ authUser, onLogout, onSessionUser, macroTab, setMacroTab }) {
   const { pathname, search } = useLocation();
 
   // Old /login URLs (and OAuth error redirects) → landing, keep ?error=...
@@ -233,8 +241,22 @@ function AppShell({ authUser, onLogout, macroTab, setMacroTab }) {
     return <Navigate to={`/landing${search}`} replace />;
   }
 
+  if (pathname === '/select-guild' && !authUser) {
+    return <Navigate to="/landing" replace />;
+  }
+  if (pathname === '/onboard' && !authUser) {
+    return <Navigate to="/landing" replace />;
+  }
+  if (pathname === '/select-guild' && authUser) {
+    return <SelectGuildPage user={authUser} onSessionUser={onSessionUser} />;
+  }
+  if (pathname === '/onboard' && authUser) {
+    return <OnboardGuildPage onSessionUser={onSessionUser} />;
+  }
+
   // Signed-in users skip landing
   if (pathname === '/landing' && authUser) {
+    if (!authUser.currentTenantId) return <Navigate to="/select-guild" replace />;
     return <Navigate to="/" replace />;
   }
 
@@ -246,8 +268,12 @@ function AppShell({ authUser, onLogout, macroTab, setMacroTab }) {
     return <Navigate to="/landing" replace />;
   }
 
+  if (authUser && !authUser.currentTenantId && pathname !== '/select-guild' && pathname !== '/onboard') {
+    return <Navigate to="/select-guild" replace />;
+  }
+
   return (
-    <MainLayout user={authUser} onLogout={onLogout} macroTab={macroTab} setMacroTab={setMacroTab}>
+    <MainLayout user={authUser} onLogout={onLogout} onSessionUser={onSessionUser} macroTab={macroTab} setMacroTab={setMacroTab}>
       <Routes>
         <Route path="/" element={<RequestTab user={authUser} />} />
         <Route path="/mimic-book" element={<MimicBookTab user={authUser} />} />

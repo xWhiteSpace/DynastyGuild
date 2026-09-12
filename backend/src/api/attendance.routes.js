@@ -1,6 +1,6 @@
 // backend/src/api/attendance.routes.js
 import { Router } from 'express';
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { getGateStatusDetails } from '../config/timeWindow.js';
 import { discordClient } from '../discord-bot/client.js';
 import { isDiscordCircuitOpen, enqueueDiscordCall } from '../utils/discordRateLimit.js';
@@ -17,6 +17,8 @@ import {
   findCrossTabDuplicates,
   buildLiveGridsFromComposition,
 } from '@guildname/shared/compositionTabs';
+import { getCurrentTenantId } from '../db/tenantContext.js';
+import { discordChannel } from '../db/channels.js';
 
 const router = Router();
 
@@ -86,7 +88,7 @@ router.post('/vanish', async (req, res) => {
     let kicked = false;
     if (!isDummyTarget && discordClient && discordClient.isReady() && !isDiscordCircuitOpen()) {
       try {
-        const guild = discordClient.guilds.cache.get(process.env.DISCORD_GUILD_ID);
+        const guild = discordClient.guilds.cache.get((getCurrentTenantId() || process.env.DISCORD_GUILD_ID));
         const member = guild?.members?.cache.get(targetUid);
         if (member) {
           await enqueueDiscordCall(() =>
@@ -199,11 +201,11 @@ router.post('/begin-raid', async (req, res) => {
         const updatedTallies = currentSession.userTallies || {};
 
         const whitelistedRooms = [
-          process.env.DISCORD_WARROOM_ID_1,
-          process.env.DISCORD_WARROOM_ID_2,
-          process.env.DISCORD_WARROOM_ID_3,
-          process.env.DISCORD_WARROOM_ID_4,
-          process.env.DISCORD_WARROOM_ID_5
+          discordChannel('DISCORD_WARROOM_ID_1'),
+          discordChannel('DISCORD_WARROOM_ID_2'),
+          discordChannel('DISCORD_WARROOM_ID_3'),
+          discordChannel('DISCORD_WARROOM_ID_4'),
+          discordChannel('DISCORD_WARROOM_ID_5')
         ].filter(Boolean);
 
         const { fetchVoiceChannelPresentUids } = await import('../utils/warRoomResolver.js');
@@ -405,7 +407,7 @@ router.post('/announce-week', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Access Denied: Action restricted to Officers.' });
     }
 
-    const channelId = process.env.DISCORD_WARANNOUNCE_CHANNEL_ID;
+    const channelId = discordChannel('DISCORD_WARANNOUNCE_CHANNEL_ID');
     if (!channelId) {
       return res.status(400).json({ success: false, error: 'DISCORD_WARANNOUNCE_CHANNEL_ID is not configured.' });
     }

@@ -25,6 +25,12 @@ export function getAuthHeaders({ json = true } = {}) {
     const savedUserSession = localStorage.getItem('guild_raid_session');
     if (savedUserSession) {
       headers['x-user-profile'] = encodeURIComponent(savedUserSession);
+      try {
+        const parsed = JSON.parse(savedUserSession);
+        if (parsed?.currentTenantId) headers['x-tenant-id'] = String(parsed.currentTenantId);
+      } catch {
+        // ignore
+      }
     }
   } catch {
     // localStorage unavailable

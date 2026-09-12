@@ -1,7 +1,7 @@
 /**
  * Schedule SSOT: materialize weekly instances + shared commitment writes.
  */
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import {
   getWeekMonday,
   enumerateWeekDates,

@@ -1,8 +1,9 @@
 // backend/src/api/request.routes.js
 import { Router } from 'express';
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { getGateStatusDetails } from '../config/timeWindow.js';
 import { DEFAULT_CONFIGURATION } from '../config/defaultConfiguration.js';
+import { getCurrentTenantId } from '../db/tenantContext.js';
 
 import crypto from 'crypto'; // 🛡️ Cryptographic token verification module
 import { isDiscordCircuitOpen, getDiscordRateLimitStatus, logDiscordHttpFailure } from '../utils/discordRateLimit.js';
@@ -202,9 +203,15 @@ let isMatch = false;
 router.post('/settings/unlock', (req, res) => {
   const { masterKey } = req.body;
   const trueSecret = process.env.SETTINGS_MASTER_KEY;
+  const user = resolveUserIdentity(req);
+
+  if (user?.isOfficer) {
+    if (req.session) req.session.settingsUnlocked = true;
+    return res.json({ success: true, message: 'Officer configuration desk unlocked.' });
+  }
 
   if (!trueSecret) {
-    return res.status(500).json({ success: false, error: 'Server config mismatch: SETTINGS_MASTER_KEY is unconfigured.' });
+    return res.status(401).json({ success: false, error: 'Officers can unlock Settings. A master key is not configured.' });
   }
 
   if (masterKey === trueSecret) {
@@ -243,7 +250,8 @@ router.get('/settings/get', async (req, res) => {
  * Commits panel adjustments down into cloud storage nodes
  */
 router.post('/settings/save', async (req, res) => {
-  if (!req.session?.settingsUnlocked) {
+  const user = resolveUserIdentity(req);
+  if (!req.session?.settingsUnlocked && !user?.isOfficer) {
     return res.status(403).json({ success: false, error: 'Operation rejected: Configuration desk input gates are key locked.' });
   }
 
@@ -503,7 +511,7 @@ router.post('/sync-roster', async (req, res) => {
   if (!user) return res.status(401).json({ success: false, error: 'Session identity missing' });
 
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const guildId = (getCurrentTenantId() || process.env.DISCORD_GUILD_ID);
 
   if (!botToken || !guildId) {
     return res.status(500).json({ success: false, error: 'Missing Discord credentials inside backend configurations.' });

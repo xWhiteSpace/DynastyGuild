@@ -2,8 +2,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
-import { database } from '../services/firebaseClient';
-import { ref, onValue } from 'firebase/database';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { 
@@ -150,49 +148,8 @@ export default function Scheduler({ user }) {
     // Admin-SDK poll — reliable when client RTDB rules block browser listeners
     const pollId = setInterval(fetchCommitmentsFromApi, 4000);
 
-    // Best-effort realtime (works only if RTDB rules allow public/auth read)
-    const commitmentsRef = ref(database, 'attendance/commitments');
-    const unsubscribeCommitments = onValue(
-      commitmentsRef,
-      (snapshot) => {
-        if (snapshot.exists()) setCommitments(snapshot.val());
-      },
-      () => {
-        // Permission denied — API poll remains the SSOT path
-      }
-    );
-
-    const instancesRef = ref(database, 'scheduler/instances');
-    const unsubscribeInstances = onValue(
-      instancesRef,
-      (snapshot) => {
-        const all = snapshot.exists() ? snapshot.val() : {};
-        const monday = weekMonday || getWeekMonday(timezone);
-        if (monday) {
-          const byWeek = {};
-          for (const [key, val] of Object.entries(all)) {
-            if (val?.weekMonday === monday) byWeek[key] = val;
-          }
-          if (Object.keys(byWeek).length > 0) {
-            setWeekInstances(byWeek);
-            return;
-          }
-        }
-        setWeekInstances(all);
-      },
-      () => {}
-    );
-
-    const timezoneRef = ref(database, 'settings/configuration/timezone');
-    const unsubscribeTimezone = onValue(timezoneRef, (snapshot) => {
-      if (snapshot.exists()) setTimezone(snapshot.val());
-    }, () => {});
-
     return () => {
       clearInterval(pollId);
-      unsubscribeCommitments();
-      unsubscribeInstances();
-      unsubscribeTimezone();
     };
   }, [user]);
 

@@ -9,12 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@guildname/shared": "*",
     "@fullcalendar/daygrid": "^6.1.21",
     "@fullcalendar/interaction": "^6.1.21",
     "@fullcalendar/react": "^6.1.21",
     "@fullcalendar/timegrid": "^6.1.21",
-    "firebase": "^11.0.0",
+    "@guildname/shared": "*",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.23.0",
     "react": "^18.3.1",

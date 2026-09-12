@@ -4,50 +4,40 @@
  * Listens to Firebase real-time nodes on boot to maintain a localized memory cache.
  * Keeps function execution synchronous to protect background system loops against promise crashes.
  */
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { DEFAULT_CONFIGURATION } from './defaultConfiguration.js';
-
-let cachedConfig = { ...DEFAULT_CONFIGURATION };
-
-let isListenerAttached = false;
+import { getCachedConfig, getCurrentTenantId, setCachedConfig } from '../db/tenantContext.js';
 
 const DAYS_OF_WEEK_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const DAYS_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/**
- * 📡 BOOTSTRAP REAL-TIME CACHE LISTENER
- * Attaches a permanent real-time stream listener to the Firebase parameters tree.
- */
-function initConfigListener() {
-  if (isListenerAttached) return;
-  
+function activeConfig() {
+  return getCachedConfig() || { ...DEFAULT_CONFIGURATION };
+}
+
+export async function refreshTenantConfigCache() {
   try {
     const db = getDatabase();
-    const configRef = db.ref('settings/configuration');
-
-    configRef.on('value', (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        cachedConfig = {
-          ...DEFAULT_CONFIGURATION,
-          ...data,
-          timezone: data.timezone || DEFAULT_CONFIGURATION.timezone,
-          isForceLocked: data.isForceLocked !== undefined ? data.isForceLocked : false,
-          adminRoles: data.adminRoles || DEFAULT_CONFIGURATION.adminRoles,
-          helpEmbedUrl: data.helpEmbedUrl || "",
-          raidHelpEmbedUrl: data.raidHelpEmbedUrl || "",
-          specialEventCategories: data.specialEventCategories || DEFAULT_CONFIGURATION.specialEventCategories,
-          items: data.items || DEFAULT_CONFIGURATION.items,
-          events: data.events || DEFAULT_CONFIGURATION.events,
-        };
-      }
-    }, (error) => {
-      console.error("⚠️ Firebase real-time synchronization listener failure:", error.message);
-    });
-
-    isListenerAttached = true;
+    const configSnap = await db.ref('settings/configuration').once('value');
+    const data = configSnap.exists() ? configSnap.val() : { ...DEFAULT_CONFIGURATION };
+    const merged = {
+      ...DEFAULT_CONFIGURATION,
+      ...data,
+      timezone: data.timezone || DEFAULT_CONFIGURATION.timezone,
+      isForceLocked: data.isForceLocked !== undefined ? data.isForceLocked : false,
+      adminRoles: data.adminRoles || DEFAULT_CONFIGURATION.adminRoles,
+      helpEmbedUrl: data.helpEmbedUrl || '',
+      raidHelpEmbedUrl: data.raidHelpEmbedUrl || '',
+      specialEventCategories: data.specialEventCategories || DEFAULT_CONFIGURATION.specialEventCategories,
+      items: data.items || DEFAULT_CONFIGURATION.items,
+      events: data.events || DEFAULT_CONFIGURATION.events,
+    };
+    const tenantId = getCurrentTenantId();
+    if (tenantId) setCachedConfig(tenantId, merged);
+    return merged;
   } catch (err) {
-    console.error("⚠️ Server bootstrap initialization error attaching Firebase time listeners:", err.message);
+    console.error('⚠️ Config cache refresh failed:', err.message);
+    return activeConfig();
   }
 }
 
@@ -56,10 +46,7 @@ function initConfigListener() {
  * Instantly parses current calendar structures against cached cloud parameters without promises.
  */
 export function getGateStatusDetails() {
-  if (!isListenerAttached) {
-    initConfigListener();
-  }
-
+  const cachedConfig = activeConfig();
   const { timezone, isForceLocked, events } = cachedConfig;
 
   const now = new Date();

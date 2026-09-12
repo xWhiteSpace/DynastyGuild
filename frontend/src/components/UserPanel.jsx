@@ -1,8 +1,8 @@
 // frontend/src/components/UserPanel.jsx
 import { useState, useEffect } from 'react';
-import { ref as dbRef, onValue as fbOnValue } from 'firebase/database';
-import { database } from '../services/firebaseClient';
+import { useNavigate } from 'react-router-dom';
 import { DEFAULT_TZ } from '../utils/guildTime';
+import { apiFetch } from '../services/apiClient';
 import DiscordSignInButton from './DiscordSignInButton';
 
 // --- 🎨 PURE VECTOR MICRO-ICONS CONSOLE ---
@@ -22,22 +22,14 @@ const TZ_LABEL = (() => {
   }
 })();
 
-export default function UserPanel({ user, onLogout }) {
-  const [serverTimeOffset, setServerTimeOffset] = useState(0);
+export default function UserPanel({ user, onLogout, onSessionUser }) {
+  const navigate = useNavigate();
   const [clockDisplay, setClockDisplay] = useState('');
+  const [tenants, setTenants] = useState([]);
 
-  // Subscribe once to Firebase's server time offset
-  useEffect(() => {
-    const unsub = fbOnValue(dbRef(database, '.info/serverTimeOffset'), (snap) => {
-      setServerTimeOffset(snap.val() || 0);
-    });
-    return () => unsub();
-  }, []);
-
-  // Tick every second using the server-synced offset, displayed in the guild timezone
   useEffect(() => {
     const tick = () => {
-      const now = new Date(Date.now() + serverTimeOffset);
+      const now = new Date();
       setClockDisplay(
         now.toLocaleTimeString('en-US', {
           timeZone: DEFAULT_TZ,
@@ -51,7 +43,32 @@ export default function UserPanel({ user, onLogout }) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [serverTimeOffset]);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    apiFetch('/api/tenants/mine', { method: 'GET' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setTenants(data.tenants || []);
+      })
+      .catch(() => {});
+    return undefined;
+  }, [user]);
+
+  const switchTenant = async (tenantId) => {
+    if (!tenantId || tenantId === user?.currentTenantId) return;
+    const res = await apiFetch('/api/tenants/select', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId }),
+    });
+    const data = await res.json();
+    if (data.success && data.user) {
+      onSessionUser?.(data.user);
+      localStorage.setItem('guild_raid_session', JSON.stringify(data.user));
+      window.location.assign('/');
+    }
+  };
 
   return (
     <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 text-slate-100 shadow-md">
@@ -62,6 +79,29 @@ export default function UserPanel({ user, onLogout }) {
             <div className="text-sm font-semibold text-slate-200 truncate mt-1 flex items-center gap-1.5">
               <span className="text-indigo-400"><IconUser /></span> {user.displayName || user.username}
             </div>
+            {user.tenantName && (
+              <div className="text-[10px] font-mono text-slate-500 mt-1">{user.tenantName}</div>
+            )}
+            {tenants.length > 1 && (
+              <select
+                className="mt-2 max-w-full rounded-md border border-slate-800 bg-slate-950 text-[11px] text-slate-200 px-2 py-1"
+                value={user.currentTenantId || ''}
+                onChange={(e) => switchTenant(e.target.value)}
+              >
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>{t.displayName || t.id}</option>
+                ))}
+              </select>
+            )}
+            {tenants.length <= 1 && (
+              <button
+                type="button"
+                onClick={() => navigate('/select-guild')}
+                className="mt-2 text-[10px] font-mono uppercase tracking-wider text-indigo-400 hover:text-indigo-300"
+              >
+                Switch / add guild
+              </button>
+            )}
             
             {/* 🛡️ DYNAMIC LIVE CORE ROLES MONITOR CAPSULES */}
             {user.roles && user.roles.length > 0 && (

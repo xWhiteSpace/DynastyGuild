@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import fs from 'fs'; 

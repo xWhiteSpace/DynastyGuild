@@ -1,4 +1,4 @@
-import admin from 'firebase-admin'; // Hooked directly to your backend setup[cite: 1]
+import { getDatabase } from '../db/database.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } from 'discord.js';
 import { ensureWeekInstances, resolveGuildTimezone } from '../services/scheduleService.js';
 import {
@@ -91,7 +91,7 @@ async function generateRSVPMatrixDashboard(db, snowflakeId, page = 1) {
  */
 export async function handleSlashCommand(interaction) {
   const { commandName } = interaction;
-  const db = admin.database(); // Establish direct Realtime DB handle[cite: 1]
+  const db = getDatabase(); // Establish direct Realtime DB handle[cite: 1]
   const snowflakeId = interaction.user.id; // Unique Snowflake key[cite: 1, 2]
 
   // ⏱️ ACK-FIRST: acknowledge within Discord's hard 3-second window BEFORE any
@@ -284,7 +284,7 @@ export async function handleSlashCommand(interaction) {
  * 🕹️ INTERACTIVE COMPONENTS ROUTER (Dynamic Event Loops & Dashboard Re-renders)
  */
 export async function handleComponentInteraction(interaction) {
-  const db = admin.database(); //[cite: 1]
+  const db = getDatabase(); //[cite: 1]
   const snowflakeId = interaction.user.id; //[cite: 1, 2]
 
   // ⏱️ ACK-FIRST: defer the component update before any Firebase I/O so slow

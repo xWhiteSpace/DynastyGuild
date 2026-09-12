@@ -3,10 +3,11 @@
  * plus the public Discord launcher / personal ephemeral panel.
  */
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
-import admin from 'firebase-admin';
+import { getDatabase } from '../db/database.js';
 import { isSlotCoordKey } from '@guildname/shared/compositionTabs';
 import { enqueueDiscordCall } from '../utils/discordRateLimit.js';
 import { resolveAnchoredComposition } from './publishedComposition.js';
+import { discordChannel } from '../db/channels.js';
 
 const EMBED_COLOR = '#9333ea';
 
@@ -31,7 +32,7 @@ function memberLabel(members, uid) {
  * Find the viewer on the Set Active published composition grid and build their column party.
  */
 export async function resolveViewerParty(snowflakeId) {
-  const db = admin.database();
+  const db = getDatabase();
   const uid = String(snowflakeId);
   const session = await resolveAnchoredComposition(db);
   if (!session) {
@@ -259,7 +260,7 @@ export async function sendPublicPartyCard(channel) {
 }
 
 export async function deployPublicPartyCardToWarAnnounce() {
-  const channelId = process.env.DISCORD_WARANNOUNCE_CHANNEL_ID;
+  const channelId = discordChannel('DISCORD_WARANNOUNCE_CHANNEL_ID');
   if (!channelId) {
     throw new Error('DISCORD_WARANNOUNCE_CHANNEL_ID is not configured.');
   }
@@ -293,7 +294,7 @@ export async function handlePartyCardInteraction(interaction) {
     await interaction.deferReply({ ephemeral: true });
   }
 
-  const db = admin.database();
+  const db = getDatabase();
   const configSnap = await db.ref('settings/configuration').once('value');
   if (configSnap.exists() && configSnap.val().isForceLocked === true) {
     return await interaction.editReply({ content: '🔒 Interaction Rejected: System under administrative lockdown freeze.' });

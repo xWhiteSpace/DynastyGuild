@@ -1,8 +1,9 @@
 // backend/src/services/discordSnapshot.js
-import admin from 'firebase-admin';
+import { getDatabase } from '../db/database.js';
 import { discordClient } from '../discord-bot/client.js';
 import { getGateStatusDetails } from '../config/timeWindow.js';
 import { isDiscordCircuitOpen, enqueueDiscordCall, logDiscordRateLimit, noteDiscordBurst } from '../utils/discordRateLimit.js';
+import { discordChannel } from '../db/channels.js';
 
 /**
  * 📣 REQ024 & REQ025: Live Automated Snapshots Controller
@@ -21,7 +22,7 @@ export async function processAndPostDiscordSnapshot(isFinalThreshold = false, ex
 
   try {
     // Access database instance securely from the firebase-admin module scope
-    const db = admin.database();
+    const db = getDatabase();
     
     // Fetch dynamic item templates and live web requests to compile the matrix dynamically
     const configSnap = await db.ref('settings/configuration').once('value');
@@ -125,7 +126,7 @@ export async function processAndPostDiscordSnapshot(isFinalThreshold = false, ex
       });
     });
     // Locate the target Discord channel profile securely from environment
-    const auctionChannelId = process.env.DISCORD_AUCTION_CHANNEL_ID;
+    const auctionChannelId = discordChannel('DISCORD_AUCTION_CHANNEL_ID');
     if (!auctionChannelId) {
       console.error("❌ [SNAPSHOT ERROR]: DISCORD_AUCTION_CHANNEL_ID is missing from environment layout.");
       return;

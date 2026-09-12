@@ -12,7 +12,12 @@ import cors from 'cors';
 import session from 'express-session';
 import { initializeEnv } from './config/env.js';
 import authRoutes from './auth/discordOAuth.js';
-import { initializeFirebase } from './config/firebase.js';
+import { migrate } from './db/migrate.js';
+import { query } from './db/pool.js';
+import { attachTenantContext } from './middleware/tenantContext.js';
+import tenantRoutes from './api/tenant.routes.js';
+import { discordChannel } from './db/channels.js';
+import { forEachOnboardedTenant } from './db/tenants.js';
 import { initializeDiscordBot, discordClient, getDiscordBotHealth } from './discord-bot/client.js'; 
 import requestRoutes from './api/request.routes.js';
 import liveRaidRoutes, { resumeLiveRaidMonitoringIfNeeded } from './api/liveRaid.routes.js';
@@ -25,7 +30,7 @@ import { getDiscordRateLimitStatus, resolveOAuthExchangeUrl } from './utils/disc
 import attendanceRoutes from './api/attendance.routes.js';
 
 initializeEnv();
-initializeFirebase();
+await migrate();
 initializeDiscordBot();
 
 const oauthBridge = resolveOAuthExchangeUrl();
@@ -82,6 +87,7 @@ app.use(cors({
     'Origin',
     'x-user-profile',
     'x-authorized-user',
+    'x-tenant-id',
     'ngrok-skip-browser-warning'
   ]
 }));
@@ -100,14 +106,21 @@ app.use(
   })
 );
 
+app.use(attachTenantContext);
 app.use('/auth', authRoutes);
+app.use('/api/tenants', tenantRoutes);
 app.use('/api/requests', requestRoutes);
 
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/live-raid', liveRaidRoutes);
 
-app.get('/', (req, res) => {
-  res.send('GuildName backend is online.');
+app.get('/', async (req, res) => {
+  try {
+    await query('SELECT 1');
+    res.send('GuildName backend is online.');
+  } catch {
+    res.status(503).send('GuildName backend is online (database warming).');
+  }
 });
 
 // 📟 Debug: remaining Discord REST/soft-ban cooldown (no secrets)
@@ -119,9 +132,9 @@ app.get('/api/debug/discord-ratelimit', (req, res) => {
 app.get('/api/deploy-auction-card', async (req, res) => {
   try {
     // 🛡️ Secure Channel Separation: Directs the initialization card straight into your clean Auction Request lobby space
-    const channelId = process.env.DISCORD_AUCREQ_CHANNEL_ID;
+    const channelId = discordChannel('DISCORD_AUCREQ_CHANNEL_ID');
     if (!channelId) {
-      return res.status(400).send("❌ Failure: System missing the structural DISCORD_AUCREQ_CHANNEL_ID environment setup.");
+      return res.status(400).send("❌ Failure: Auction request channel is not mapped for this guild.");
     }
 
     if (!discordClient || !discordClient.isReady()) {
@@ -186,14 +199,11 @@ app.listen(PORT, () => {
   console.log(`🌐 [SERVER ONLINE] Listening smoothly on port ${PORT}`);
   console.log(`🚀 [TASK001 PASS]: Event-driven architecture active. 5-second loop decommissioned.`);
 
-  // Re-arm in-memory monitoring ticker if a live session was left Active across restart
-  resumeLiveRaidMonitoringIfNeeded().catch((err) => {
-    console.error('[live-raid] resume on boot failed:', err.message);
-  });
-
-  import('./services/attendanceDecision.js')
-    .then((m) => m.seedMissingLeaveCredits())
-    .catch((err) => console.error('[attendance] leave-credit seed failed:', err.message));
+  forEachOnboardedTenant(async () => {
+    const { seedMissingLeaveCredits } = await import('./services/attendanceDecision.js');
+    await seedMissingLeaveCredits();
+    await resumeLiveRaidMonitoringIfNeeded();
+  }).catch((err) => console.error('[boot] tenant seed failed:', err.message));
 
   // ✅ REFACTORED: Extraneous text scheduler loop completely removed to prevent double-posting.
   // Execution tracking has been centralized into the drift-proof engine in client.js.

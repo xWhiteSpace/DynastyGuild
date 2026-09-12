@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PermissionFlagsBits } from 'discord.js';
 import { enqueueDiscordCall } from '../utils/discordRateLimit.js';
+import { getCurrentTenantId } from '../db/tenantContext.js';
 
 const ICONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../assets/job-icons');
 const EMOJI_PREFIX = 'dgjob_';
@@ -47,17 +48,20 @@ function canManageEmojis(member) {
 }
 
 export async function syncJobIconEmojis(client) {
-  const guildId = (process.env.DISCORD_GUILD_ID || '').trim();
-  if (!client?.isReady() || !guildId) return { synced: 0 };
+  if (!client?.isReady()) return { synced: 0 };
+  const guilds = [...client.guilds.cache.values()];
+  if (!guilds.length && process.env.DISCORD_GUILD_ID) {
+    const fetched = await enqueueDiscordCall(() => client.guilds.fetch(process.env.DISCORD_GUILD_ID)).catch(() => null);
+    if (fetched) guilds.push(fetched);
+  }
+  let synced = 0;
+  for (const guild of guilds) {
+    synced += await syncJobIconsForGuild(guild);
+  }
+  return { synced };
+}
 
-  let guild = client.guilds.cache.get(guildId);
-  if (!guild) {
-    guild = await enqueueDiscordCall(() => client.guilds.fetch(guildId)).catch(() => null);
-  }
-  if (!guild) {
-    console.warn('[JOB ICONS] Guild not found; class icons will be omitted on Attendance.');
-    return { synced: 0 };
-  }
+async function syncJobIconsForGuild(guild) {
 
   await enqueueDiscordCall(() => guild.emojis.fetch()).catch(() => {});
   const existingByName = new Map();
@@ -68,7 +72,7 @@ export async function syncJobIconEmojis(client) {
     files = fs.readdirSync(ICONS_DIR).filter((name) => name.toLowerCase().endsWith('.png'));
   } catch {
     console.warn('[JOB ICONS] Icon directory missing:', ICONS_DIR);
-    return { synced: 0 };
+    return 0;
   }
 
   const me = guild.members.me || await enqueueDiscordCall(() => guild.members.fetchMe()).catch(() => null);
@@ -104,5 +108,5 @@ export async function syncJobIconEmojis(client) {
     }
   }
 
-  return { synced };
+  return synced;
 }

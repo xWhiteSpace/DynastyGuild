@@ -2,7 +2,7 @@
  * Published (sent) Raid Compose snapshots + Set Active anchor.
  * Party / Attendance Discord cards read the anchor; Live Raid starts from a snapshot.
  */
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { buildLiveGridsFromComposition } from '@guildname/shared/compositionTabs';
 
 export const PUBLISHED_PATH = 'attendance/published';

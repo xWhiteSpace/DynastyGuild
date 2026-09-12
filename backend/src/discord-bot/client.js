@@ -1,7 +1,11 @@
 import dns from 'node:dns';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { handleAuctionInteraction } from '../services/discordInteractiveAuction.js'; // 🕹️ Route live button boards
-import admin from 'firebase-admin'; // 🛰️ Connect absolute database reference paths
+import { getDatabase } from '../db/database.js';
+import { discordChannel } from '../db/channels.js';
+import { getTenant, forEachOnboardedTenant, loadTenantSettings, mergeChannelFallback } from '../db/tenants.js';
+import { runWithTenant, setCachedConfig, setCachedChannels } from '../db/tenantContext.js';
+import { refreshTenantConfigCache } from '../config/timeWindow.js';
 import { handleSlashCommand, handleComponentInteraction } from './discordSlashcmd.js';
 import { handleAttendanceCardInteraction } from '../services/discordAttendanceCards.js';
 import { syncJobIconEmojis } from '../services/discordJobEmojis.js';
@@ -152,8 +156,20 @@ export async function initializeDiscordBot() {
       console.warn('[JOB ICONS] Sync skipped:', err.message);
     });
 
+async function withGuildTenant(guildId, fn) {
+  if (!guildId) return fn();
+  const tenant = await getTenant(guildId).catch(() => null);
+  if (tenant) {
+    const settings = await loadTenantSettings(guildId);
+    setCachedConfig(guildId, settings.configuration);
+    setCachedChannels(guildId, mergeChannelFallback(settings.discordChannels));
+  }
+  return runWithTenant(guildId, fn);
+}
+
    // 🕹️ LIVE INTERACTION ROUTER: Gated exclusively to general room for slash commands and interactive boards[cite: 1]
     discordClient.on('interactionCreate', async (interaction) => {
+      await withGuildTenant(interaction.guildId, async () => {
       try {
         // Attendance card lives in the war-announce channel — route by customId
         // prefix so it bypasses the general-room gate.
@@ -188,7 +204,7 @@ export async function initializeDiscordBot() {
           return await handleAuctionInteraction(interaction);
         }
 
-        if (interaction.channelId !== process.env.DISCORD_GENROOM_ID_1) {
+        if (interaction.channelId !== discordChannel('DISCORD_GENROOM_ID_1')) {
           return await interaction.reply({
             content: '❌ System commands are strictly locked to the designated general room channel.',
             ephemeral: true
@@ -217,13 +233,15 @@ export async function initializeDiscordBot() {
           }).catch(() => {});
         }
       }
+      });
     });
 
     // 🛡️ Foundational Job Assignment Message Interceptor
     discordClient.on('messageCreate', async (message) => {
       try {
         if (message.author.bot) return;
-        if (message.channelId !== process.env.DISCORD_GENROOM_ID_1) return;
+        await withGuildTenant(message.guildId, async () => {
+        if (message.channelId !== discordChannel('DISCORD_GENROOM_ID_1')) return;
 
         const content = message.content.trim();
         if (content.startsWith('/job ') || content.startsWith('/jobchange ')) {
@@ -234,7 +252,7 @@ export async function initializeDiscordBot() {
             return await message.reply("❌ Please provide a job name. Example: `/job High Priest`").catch(() => {});
           }
 
-          const db = admin.database();
+          const db = getDatabase();
           const configSnap = await db.ref('settings/configuration/jobs').once('value');
           let matchedJobCode = null;
           let matchedJobName = "";
@@ -261,6 +279,7 @@ export async function initializeDiscordBot() {
 
           await message.reply(`✅ Success! Your job specialization has been successfully updated to **${matchedJobName}** (\`${matchedJobCode}\`).`).catch(() => {});
         }
+        });
       } catch (err) {
         console.error("⚠️ Error handling job text command trigger:", err.message);
       }
@@ -272,33 +291,30 @@ export async function initializeDiscordBot() {
     let skipFirstDiscordTick = true;
     setInterval(() => {
       const circuitOpen = isDiscordCircuitOpen();
+      forEachOnboardedTenant(async () => {
+        await refreshTenantConfigCache().catch(() => {});
+        if (skipFirstDiscordTick) {
+          return;
+        }
+        if (!circuitOpen) {
+          const { maybeAnnounceEvents } = await import('./eventAnnounce.js');
+          await maybeAnnounceEvents();
+        }
+        const attendanceDecision = await import('../services/attendanceDecision.js');
+        await attendanceDecision.closeExpiredDeadlines();
+        await attendanceDecision.maybeRefreshMonthlyLeaveCredits();
+        const liveRaid = await import('../api/liveRaid.routes.js');
+        await liveRaid.maybeAutoEndLiveRaid();
+        const { maybeAutoCommitAuction } = await import('./autoCommitAuction.js');
+        await maybeAutoCommitAuction();
+      }).catch((err) => console.error('⚠️ Tenant scheduler warning:', err.message));
+
       if (skipFirstDiscordTick) {
         skipFirstDiscordTick = false;
         console.log('⏭️ [SCHEDULER]: Skipping Discord announcers on the first tick after ready.');
       } else if (circuitOpen) {
         console.log('⏭️ [SCHEDULER]: Discord circuit open — skipping announcers.');
-      } else {
-        import('./eventAnnounce.js')
-          .then((m) => m.maybeAnnounceEvents())
-          .catch((err) => console.error('⚠️ Event announcement scheduler warning:', err.message));
       }
-
-      import('../services/attendanceDecision.js')
-        .then((m) => m.closeExpiredDeadlines())
-        .catch((err) => console.error('⚠️ Attendance deadline closer warning:', err.message));
-
-      import('../services/attendanceDecision.js')
-        .then((m) => m.maybeRefreshMonthlyLeaveCredits())
-        .catch((err) => console.error('⚠️ Monthly leave-credit refresh warning:', err.message));
-
-      // Firebase-only jobs — safe during a Discord cooldown
-      import('../api/liveRaid.routes.js')
-        .then((m) => m.maybeAutoEndLiveRaid())
-        .catch((err) => console.error('⚠️ Live raid auto-end scheduler warning:', err.message));
-
-      import('./autoCommitAuction.js')
-        .then((m) => m.maybeAutoCommitAuction())
-        .catch((err) => console.error('⚠️ Auto-commit auction scheduler warning:', err.message));
     }, 60000);
   };
 

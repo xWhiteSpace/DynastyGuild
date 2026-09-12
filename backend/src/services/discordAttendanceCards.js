@@ -8,7 +8,7 @@ import {
   EmbedBuilder,
   StringSelectMenuBuilder,
 } from 'discord.js';
-import admin from 'firebase-admin';
+import { getDatabase } from '../db/database.js';
 import {
   applyAttendanceDecision,
   AttendanceDecisionError,
@@ -17,6 +17,7 @@ import {
 } from './attendanceDecision.js';
 import { enqueueDiscordCall, isDiscordCircuitOpen } from '../utils/discordRateLimit.js';
 import { jobIconEmoji, withJobIcon } from './discordJobEmojis.js';
+import { discordChannel } from '../db/channels.js';
 
 const EMBED_COLOR = '#9333ea';
 const ANNOUNCE_COOLDOWN_MS = 60 * 1000;
@@ -62,7 +63,7 @@ function buildRsvpAnnounceLine({ displayName, action, eventTitle, whenLabel }) {
   const name = displayName || 'A raider';
   const event = eventTitle || 'the raid';
   const when = whenLabel || '—';
-  const warId = (process.env.DISCORD_WARANNOUNCE_CHANNEL_ID || '').trim();
+  const warId = (discordChannel('DISCORD_WARANNOUNCE_CHANNEL_ID') || '').trim();
   const cta = warId ? ` Confirm yours at <#${warId}>.` : '';
   if (action === 'Leave') {
     return `🕊️ **${name}** will **Leave** on **${event}** this coming **${when}.** Rest well — the guild has you covered.${cta}`;
@@ -71,7 +72,7 @@ function buildRsvpAnnounceLine({ displayName, action, eventTitle, whenLabel }) {
 }
 
 async function announceAttendanceToGenRoom({ displayName, action, eventTitle, whenLabel }) {
-  const genRoomId = (process.env.DISCORD_GENROOM_ID_1 || '').trim();
+  const genRoomId = (discordChannel('DISCORD_GENROOM_ID_1') || '').trim();
   if (!genRoomId) return;
   if (isDiscordCircuitOpen()) return;
 
@@ -241,7 +242,7 @@ export async function sendPublicAttendanceCard(channel) {
  * Settings Send: post the public launcher into DISCORD_WARANNOUNCE_CHANNEL_ID.
  */
 export async function deployPublicAttendanceCardToWarAnnounce() {
-  const channelId = process.env.DISCORD_WARANNOUNCE_CHANNEL_ID;
+  const channelId = discordChannel('DISCORD_WARANNOUNCE_CHANNEL_ID');
   if (!channelId) {
     throw new Error('DISCORD_WARANNOUNCE_CHANNEL_ID is not configured.');
   }
@@ -270,7 +271,7 @@ export async function deployPublicAttendanceCardToWarAnnounce() {
 }
 
 async function buildPersonalPanel(snowflakeId) {
-  const db = admin.database();
+  const db = getDatabase();
   const { event, timezone, deadlineMs, missing } = await resolveAttendanceTargetEvent();
   const [memberSnap, configSnap] = await Promise.all([
     db.ref(`auction/members/${snowflakeId}`).once('value'),
@@ -352,7 +353,7 @@ async function replyIfLocked(db, interaction) {
 export async function handleAttendanceCardInteraction(interaction) {
   const snowflakeId = interaction.user.id;
   const customId = interaction.customId || '';
-  const db = admin.database();
+  const db = getDatabase();
 
   if (customId === 'attcard:open') {
     if (!interaction.deferred && !interaction.replied) {

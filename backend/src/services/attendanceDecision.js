@@ -2,7 +2,7 @@
  * Attendance RSVP SSOT: leave credits, deadline lock, next-event targeting,
  * deadline closer, and monthly leave-credit refresh.
  */
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 import { writeCommitment, ensureWeekInstances, resolveGuildTimezone } from './scheduleService.js';
 import {
   getWeekMonday,

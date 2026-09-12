@@ -14,7 +14,7 @@
  *  - SKIP-IF-EMPTY: never archives an empty/half-done board (zero winners).
  *  - A short catch-up window absorbs tick jitter around the trigger minute.
  */
-import admin from 'firebase-admin';
+import { getDatabase } from '../db/database.js';
 import { getGuildWeekMinute, DEFAULT_TZ } from '../utils/guildTime.js';
 
 const WEEK_MINUTES = 10080;
@@ -60,7 +60,7 @@ function toArray(node) {
  */
 export async function maybeAutoCommitAuction() {
   try {
-    const db = admin.database();
+    const db = getDatabase();
 
     const configSnap = await db.ref('settings/configuration').once('value');
     const dynamicConfig = configSnap.exists() ? configSnap.val() : {};

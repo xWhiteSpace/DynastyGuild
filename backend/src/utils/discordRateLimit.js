@@ -5,7 +5,7 @@
  * `retry_after`. The wait (if any) lives on response headers: Retry-After
  * (seconds or HTTP-date), x-ratelimit-reset-after, x-ratelimit-reset.
  */
-import { getDatabase } from 'firebase-admin/database';
+import { getDatabase } from '../db/database.js';
 
 const DEFAULT_CIRCUIT_MS = 15 * 60 * 1000;
 const MIN_GAP_MS = 1500;

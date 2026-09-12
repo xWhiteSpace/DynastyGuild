@@ -3,6 +3,8 @@
  * SSOT: settings/configuration/warRooms (relational ID + envKey) → Render process.env
  */
 
+import { currentDiscordChannels, discordChannel } from '../db/channels.js';
+
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{17,20}$/;
 
 export function resolveWarRoomChannelId(identifier, warRooms = {}) {
@@ -14,6 +16,26 @@ export function resolveWarRoomChannelId(identifier, warRooms = {}) {
   }
 
   const catalogEntry = warRooms[token];
+  if (catalogEntry?.channelId && DISCORD_SNOWFLAKE_PATTERN.test(String(catalogEntry.channelId))) {
+    return String(catalogEntry.channelId);
+  }
+
+  const tenantChannels = currentDiscordChannels();
+  if (catalogEntry?.envKey && tenantChannels.warRooms?.[catalogEntry.envKey]) {
+    return tenantChannels.warRooms[catalogEntry.envKey];
+  }
+  if (tenantChannels.warRooms?.[token]) {
+    return tenantChannels.warRooms[token];
+  }
+
+  if (catalogEntry?.envKey) {
+    const mapped = discordChannel(catalogEntry.envKey);
+    if (mapped) return mapped;
+  }
+
+  const direct = discordChannel(token);
+  if (direct) return direct;
+
   if (catalogEntry?.envKey && process.env[catalogEntry.envKey]) {
     return process.env[catalogEntry.envKey];
   }
@@ -23,8 +45,10 @@ export function resolveWarRoomChannelId(identifier, warRooms = {}) {
   }
 
   for (const room of Object.values(warRooms)) {
-    if (room?.envKey === token && process.env[room.envKey]) {
-      return process.env[room.envKey];
+    if (room?.envKey === token) {
+      const fromTenant = discordChannel(room.envKey);
+      if (fromTenant) return fromTenant;
+      if (process.env[room.envKey]) return process.env[room.envKey];
     }
   }
 

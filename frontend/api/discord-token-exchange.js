@@ -107,6 +107,11 @@ export default async function handler(req, res) {
       }
     }
 
+    const guildsResponse = await fetch('https://discord.com/api/users/@me/guilds', {
+      headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+    });
+    const guilds = guildsResponse.ok ? await guildsResponse.json().catch(() => []) : [];
+
     return res.status(200).json({
       user: {
         id: user.id,
@@ -117,6 +122,7 @@ export default async function handler(req, res) {
       },
       member,
       memberStatus,
+      guilds: Array.isArray(guilds) ? guilds : [],
     });
   } catch (err) {
     console.error('[oauth-bridge] exception', err);
