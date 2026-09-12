@@ -1,14 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const DEFAULT_DAYS = [...DAY_KEYS];
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const hour = String(Math.floor(i / 2)).padStart(2, '0');
-  const minute = i % 2 === 0 ? '00' : '30';
-  return `${hour}:${minute}`;
-});
+const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function emptyHours() {
+  return {
+    mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [],
+  };
+}
+
+function hoursFromMine(mine) {
+  const next = emptyHours();
+  if (!mine?.hours) return next;
+  for (const key of DAY_KEYS) {
+    next[key] = Array.isArray(mine.hours[key]) ? [...mine.hours[key]] : [];
+  }
+  return next;
+}
+
+function hasAnyHour(hours) {
+  return DAY_KEYS.some((key) => (hours[key] || []).length > 0);
+}
 
 function cellClass(count, max) {
   if (!count) return 'bg-slate-950';
@@ -27,14 +40,13 @@ export default function PeakHoursTab({ user }) {
   const [success, setSuccess] = useState('');
   const [timezone, setTimezone] = useState('Asia/Manila');
   const [mine, setMine] = useState(null);
-  const [start, setStart] = useState('21:00');
-  const [end, setEnd] = useState('23:30');
-  const [days, setDays] = useState(DEFAULT_DAYS);
+  const [hours, setHours] = useState(emptyHours);
   const [heatmap, setHeatmap] = useState([]);
   const [peak, setPeak] = useState(null);
   const [filled, setFilled] = useState(0);
   const [total, setTotal] = useState(0);
   const [missing, setMissing] = useState([]);
+  const paintRef = useRef(null);
 
   const load = async ({ quiet = false } = {}) => {
     try {
@@ -48,9 +60,7 @@ export default function PeakHoursTab({ user }) {
       }
       setTimezone(data.timezone || 'Asia/Manila');
       setMine(data.mine || null);
-      setStart(data.mine?.start || '21:00');
-      setEnd(data.mine?.end || '23:30');
-      setDays(data.mine?.days?.length ? data.mine.days : DEFAULT_DAYS);
+      setHours(hoursFromMine(data.mine || null));
       setHeatmap(Array.isArray(data.heatmap) ? data.heatmap : []);
       setPeak(data.peak || null);
       setFilled(data.filled || 0);
@@ -67,6 +77,16 @@ export default function PeakHoursTab({ user }) {
     load();
   }, [user?.id]);
 
+  useEffect(() => {
+    const stopPaint = () => { paintRef.current = null; };
+    window.addEventListener('pointerup', stopPaint);
+    window.addEventListener('pointercancel', stopPaint);
+    return () => {
+      window.removeEventListener('pointerup', stopPaint);
+      window.removeEventListener('pointercancel', stopPaint);
+    };
+  }, []);
+
   const maxCount = useMemo(() => {
     let max = 0;
     for (const row of heatmap) {
@@ -75,9 +95,37 @@ export default function PeakHoursTab({ user }) {
     return max;
   }, [heatmap]);
 
-  const toggleDay = (key) => {
-    setDays((prev) => (prev.includes(key) ? prev.filter((d) => d !== key) : [...prev, key]));
+  const setCell = (dayKey, hour, on) => {
+    setHours((prev) => {
+      const current = new Set(prev[dayKey] || []);
+      if (on) current.add(hour);
+      else current.delete(hour);
+      return { ...prev, [dayKey]: [...current].sort((a, b) => a - b) };
+    });
   };
+
+  const paintCell = (dayKey, hour) => {
+    const paint = paintRef.current;
+    if (!paint) return;
+    setCell(dayKey, hour, paint.on);
+  };
+
+  const startPaint = (dayKey, hour) => {
+    const on = !(hours[dayKey] || []).includes(hour);
+    paintRef.current = { on };
+    setCell(dayKey, hour, on);
+  };
+
+  const copyMondayToWeek = () => {
+    setHours((prev) => {
+      const monday = [...(prev.mon || [])];
+      const next = { ...prev };
+      for (const key of DAY_KEYS) next[key] = [...monday];
+      return next;
+    });
+  };
+
+  const clearAll = () => setHours(emptyHours());
 
   const handleSave = async () => {
     setSaving(true);
@@ -86,7 +134,7 @@ export default function PeakHoursTab({ user }) {
     try {
       const res = await apiFetch('/api/attendance/peak-hours/me', {
         method: 'PUT',
-        body: JSON.stringify({ start, end, days }),
+        body: JSON.stringify({ hours }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -131,63 +179,80 @@ export default function PeakHoursTab({ user }) {
         </div>
       )}
 
-      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Your window</div>
-        <p className="text-[11px] text-slate-500">
-          Two times, then tap days off. Overnight is fine (22:00 to 02:00).
-        </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-            From
-            <select
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 block bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl overflow-x-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Your hours</div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Click squares for the hours you play. Drag to fill a stretch. Split sessions are fine.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={copyMondayToWeek}
+              className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-white border border-slate-800 rounded-lg px-3 py-1.5"
             >
-              {TIME_OPTIONS.map((t) => (
-                <option key={`s-${t}`} value={t}>{t}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-            To
-            <select
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="mt-1 block bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+              Copy Monday to all days
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-white border border-slate-800 rounded-lg px-3 py-1.5"
             >
-              {TIME_OPTIONS.map((t) => (
-                <option key={`e-${t}`} value={t}>{t}</option>
-              ))}
-            </select>
-          </label>
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div className="min-w-[640px] select-none">
+          <div className="grid grid-cols-[2.5rem_repeat(24,minmax(0,1fr))] gap-0.5 mb-1">
+            <div />
+            {Array.from({ length: 24 }, (_, h) => (
+              <div key={h} className="text-[9px] text-center text-slate-600 font-mono">
+                {h % 3 === 0 ? String(h).padStart(2, '0') : ''}
+              </div>
+            ))}
+          </div>
+          {DAY_KEYS.map((key, dayIndex) => (
+            <div key={key} className="grid grid-cols-[2.5rem_repeat(24,minmax(0,1fr))] gap-0.5 mb-0.5">
+              <div className="text-[10px] text-slate-500 font-mono self-center">{DAY_SHORT[dayIndex]}</div>
+              {Array.from({ length: 24 }, (_, hour) => {
+                const on = (hours[key] || []).includes(hour);
+                return (
+                  <button
+                    key={`${key}-${hour}`}
+                    type="button"
+                    title={`${DAY_SHORT[dayIndex]} ${String(hour).padStart(2, '0')}:00–${hour === 23 ? '24:00' : `${String(hour + 1).padStart(2, '0')}:00`}`}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                      }
+                      startPaint(key, hour);
+                    }}
+                    onPointerEnter={() => paintCell(key, hour)}
+                    className={`h-6 rounded-sm border touch-none ${
+                      on
+                        ? 'bg-indigo-500 border-indigo-300'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-600'
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end">
           <button
             type="button"
-            disabled={saving || days.length === 0}
+            disabled={saving || !hasAnyHour(hours)}
             onClick={handleSave}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2 text-[10px] font-bold uppercase tracking-wider text-white disabled:opacity-40"
           >
             {saving ? 'Saving…' : mine ? 'Update' : 'Save'}
           </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {DAY_KEYS.map((key, i) => {
-            const on = days.includes(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => toggleDay(key)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${
-                  on
-                    ? 'border-indigo-500 bg-indigo-600 text-white'
-                    : 'border-slate-800 bg-slate-950 text-slate-500'
-                }`}
-              >
-                {DAY_LABELS[i]}
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -195,7 +260,7 @@ export default function PeakHoursTab({ user }) {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Guild heatmap</div>
           <div className="text-[11px] font-mono text-slate-500">
-            {filled} of {total} members filled this in
+            {filled} of {total} MasterList members filled this in
           </div>
         </div>
         {peak?.label && (
@@ -213,7 +278,7 @@ export default function PeakHoursTab({ user }) {
                 </div>
               ))}
             </div>
-            {DAY_LABELS.map((label, dayIndex) => (
+            {DAY_SHORT.map((label, dayIndex) => (
               <div key={label} className="grid grid-cols-[2.5rem_repeat(24,minmax(0,1fr))] gap-0.5 mb-0.5">
                 <div className="text-[10px] text-slate-500 font-mono self-center">{label}</div>
                 {Array.from({ length: 24 }, (_, hour) => {
@@ -242,22 +307,23 @@ export default function PeakHoursTab({ user }) {
         )}
       </div>
 
-      {user?.isOfficer && missing.length > 0 && (
+      {user?.isOfficer && (
         <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Not filled in ({missing.length})
+            Not filled in
           </div>
-          <p className="text-[11px] text-slate-500">Officers only. Names, not their hours.</p>
-          <div className="flex flex-wrap gap-2">
-            {missing.map((m) => (
-              <span
-                key={m.uid}
-                className="px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-950 text-[11px] text-slate-300"
-              >
-                {m.displayName}
-              </span>
-            ))}
-          </div>
+          <p className="text-[11px] text-slate-500">
+            MasterList raid roster without Peak Hours ({missing.length})
+          </p>
+          {missing.length === 0 ? (
+            <p className="text-sm text-slate-500">Everyone on MasterList has set Peak Hours.</p>
+          ) : (
+            <ol className="list-decimal list-inside space-y-1 text-sm text-slate-200">
+              {missing.map((m) => (
+                <li key={m.uid}>{m.displayName}</li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
     </div>

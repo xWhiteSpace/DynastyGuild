@@ -10,13 +10,6 @@ export function parseHm(value) {
   return hour * 60 + minute;
 }
 
-export function formatHm(totalMinutes) {
-  const wrapped = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
-  const hour = Math.floor(wrapped / 60);
-  const minute = wrapped % 60;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
 export function hoursCovered(startMin, endMin) {
   if (startMin == null || endMin == null || startMin === endMin) return [];
   const hits = new Set();
@@ -27,37 +20,77 @@ export function hoursCovered(startMin, endMin) {
       if (from < binEnd && to > binStart) hits.add(hour);
     }
   };
-  if (endMin > startMin) {
-    mark(startMin, endMin);
-  } else {
+  if (endMin > startMin) mark(startMin, endMin);
+  else {
     mark(startMin, 24 * 60);
     mark(0, endMin);
   }
   return [...hits].sort((a, b) => a - b);
 }
 
-export function normalizePlaySchedule(raw) {
-  if (!raw || typeof raw !== 'object') return null;
+function uniqueHours(list) {
+  const hours = [...new Set(
+    (Array.isArray(list) ? list : [])
+      .map((value) => parseInt(value, 10))
+      .filter((hour) => Number.isInteger(hour) && hour >= 0 && hour <= 23)
+  )].sort((a, b) => a - b);
+  return hours;
+}
+
+function hoursFromWindow(raw) {
+  if (!raw || typeof raw !== 'object') return [];
   const startMin = parseHm(raw.start);
   const endMin = parseHm(raw.end);
-  if (startMin == null || endMin == null || startMin === endMin) return null;
-  const days = [...new Set(
-    (Array.isArray(raw.days) ? raw.days : [])
-      .map((day) => String(day || '').toLowerCase().slice(0, 3))
-  )].filter((day) => DAY_KEYS.includes(day));
-  if (!days.length) return null;
-  return {
-    start: formatHm(startMin),
-    end: formatHm(endMin),
-    days,
-    updatedAt: Number(raw.updatedAt) || 0,
-  };
+  return hoursCovered(startMin, endMin);
+}
+
+export function normalizePlaySchedule(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const hours = {};
+  let hasHour = false;
+
+  if (raw.hours && typeof raw.hours === 'object' && !Array.isArray(raw.hours)) {
+    for (const key of DAY_KEYS) {
+      const dayHours = uniqueHours(raw.hours[key]);
+      if (dayHours.length) {
+        hours[key] = dayHours;
+        hasHour = true;
+      }
+    }
+  } else if (raw.days && !Array.isArray(raw.days) && typeof raw.days === 'object') {
+    for (const key of DAY_KEYS) {
+      const dayHours = hoursFromWindow(raw.days[key]);
+      if (dayHours.length) {
+        hours[key] = dayHours;
+        hasHour = true;
+      }
+    }
+  } else {
+    const windowHours = hoursFromWindow({ start: raw.start, end: raw.end });
+    const legacyDays = Array.isArray(raw.days) ? raw.days : [];
+    if (windowHours.length) {
+      for (const day of legacyDays) {
+        const key = String(day || '').toLowerCase().slice(0, 3);
+        if (!DAY_KEYS.includes(key)) continue;
+        hours[key] = [...windowHours];
+        hasHour = true;
+      }
+    }
+  }
+
+  if (!hasHour) return null;
+  return { hours, updatedAt: Number(raw.updatedAt) || 0 };
 }
 
 export function isPeakHoursEligible(uid, member) {
   if (!member || typeof member !== 'object') return false;
   if (String(uid).startsWith('dummy_') || member.isDummy === true) return false;
-  return true;
+  return member.isRaidRoster === true;
+}
+
+export function rosterDisplayName(member, uid) {
+  const name = String(member?.displayName || '').trim();
+  return name || String(uid);
 }
 
 export function emptyHeatmap() {
@@ -65,11 +98,11 @@ export function emptyHeatmap() {
 }
 
 export function addScheduleToHeatmap(heatmap, schedule) {
-  const hours = hoursCovered(parseHm(schedule.start), parseHm(schedule.end));
-  for (const day of schedule.days) {
-    const dayIndex = DAY_KEYS.indexOf(day);
-    if (dayIndex < 0) continue;
-    for (const hour of hours) heatmap[dayIndex][hour] += 1;
+  for (const key of DAY_KEYS) {
+    const dayIndex = DAY_KEYS.indexOf(key);
+    for (const hour of schedule.hours?.[key] || []) {
+      heatmap[dayIndex][hour] += 1;
+    }
   }
 }
 
@@ -137,7 +170,7 @@ export function aggregatePeakHours(members) {
     if (!schedule) {
       missing.push({
         uid: String(uid),
-        displayName: member.displayName || member.username || String(uid),
+        displayName: rosterDisplayName(member, uid),
       });
       continue;
     }

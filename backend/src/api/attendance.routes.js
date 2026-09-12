@@ -1140,13 +1140,14 @@ router.put('/peak-hours/me', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Sign in with Discord to set Peak Hours.' });
   }
   const schedule = normalizePlaySchedule({
+    hours: req.body?.hours,
+    days: req.body?.days,
     start: req.body?.start,
     end: req.body?.end,
-    days: req.body?.days,
     updatedAt: Date.now(),
   });
   if (!schedule) {
-    return res.status(400).json({ success: false, error: 'Pick a From/To window and at least one day.' });
+    return res.status(400).json({ success: false, error: 'Click at least one hour you play.' });
   }
   try {
     const db = getDatabase();
